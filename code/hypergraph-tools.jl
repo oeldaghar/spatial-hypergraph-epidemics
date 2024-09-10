@@ -228,12 +228,25 @@ function spatial_hypergraph_edges(n::Integer,d::Integer;degreedist=LogNormal(log
 end
 
 
-
-
-# ### hypergraph stats 
-# function node_degrees(hedges)
-#   n = maximum(x->maximum(x),hedges)
-#   maxlen = maximum(x->lastindex(x),hedges)
-#   # record hyperedge size dist, deg, etc
-
-# end
+## File I/O
+function save_hedges(hedges,fpath)
+  if !endswith(fpath,".txt")
+    fpath = "$fpath.txt"
+  end
+  open(fpath, "w") do io
+    for edge in hedges
+      writedlm(io, [edge], ',')
+    end
+  end
+end
+function read_hedges(filename::String)
+  result = Vector{Vector{Int}}()
+  open(filename, "r") do io
+      for line in eachline(io)
+          # Split the line by commas and parse each element to Int
+          inner_vec = parse.(Int, split(line, ","))
+          push!(result, inner_vec)
+      end
+  end
+  return result
+end
