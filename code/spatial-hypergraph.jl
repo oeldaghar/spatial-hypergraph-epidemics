@@ -38,7 +38,6 @@ function spatial_hypergraph_edges(n::Integer,d::Integer;degreedist=LogNormal(log
 end
 
 
-
 ##
 using CairoMakie
 function graphlines_spatial_hypergraph(hedges, xy::AbstractMatrix{T};kwargs...) where T

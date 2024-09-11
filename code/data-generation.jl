@@ -24,10 +24,10 @@ function generate_data(n,k,ngraphs=5;rseed=1)
         unique!(hedges)
 
         #save info 
-        file_name = "data/hypergraphs/spatial-hypergraph-$n-$random_seed.txt"
+        file_name = "data/hypergraphs/spatial-hypergraph-$n-$k-$random_seed.txt"
         save_hedges(hedges,file_name)
 
-        file_name = "data/hypergraphs/spatial-hypergraph-$n-$random_seed.xy"
+        file_name = "data/hypergraphs/spatial-hypergraph-$n-$k-$random_seed.xy"
         open(file_name, "w") do io
             writedlm(io, xy')
         end

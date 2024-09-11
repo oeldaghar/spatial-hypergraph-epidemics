@@ -10,7 +10,7 @@ include("hypergraph-tools.jl")
 include("spatial-hypergraph.jl")
 
 using ProgressMeter
-
+using Distributed
 
 function _edge_list_to_neighbor_list(edges)
     n = maximum(x->max(x[1],x[2]),edges) # find the number of nodes
@@ -51,7 +51,7 @@ function _update_state!(neighborlist, currstate, newstate, beta, gamma, delta, e
         end
     end
 end
-function sirs(edges, seednode, beta=1e-2, gamma=5e-2, delta=5e-2, exo=5/100000, tmax=5000)
+function sirs(edges, seednode, beta=3e-2, gamma=5e-2, delta=5e-2, exo=5/100000, tmax=365*10)
     neighlist = _edge_list_to_neighbor_list(edges)
     n = length(neighlist)
     
@@ -133,7 +133,7 @@ function _update_state_hyper!(hyper_neighborlist, currstate, newstate, beta, gam
         end
     end
 end
-function sirs_hyper(hedges, seednode, beta=1e-2, gamma=5e-2, delta=5e-2, exo=5/100000, tmax=5000)
+function sirs_hyper(hedges, seednode, beta=1e-2, gamma=5e-2, delta=1/365, exo=5/100000, tmax=365*10)
     neighlist = _hyperedge_list_to_neighbor_list(hedges)
     n = length(neighlist)
     
@@ -152,32 +152,31 @@ function sirs_hyper(hedges, seednode, beta=1e-2, gamma=5e-2, delta=5e-2, exo=5/1
     return ninfected
 end 
 
+### parallel version of the code
+function parallel_sirs(edges, seed_nodes;
+                        beta=3e-2, gamma=5e-2, delta=1/365, exo=5/100000, tmax=365*10)
+    println("USING $(lastindex(workers())) WORKERS for $(lastindex(seed_nodes)) NODES")
+    #cache worker information
+    @everywhere edges = $edges 
+    #temporary.. if we want to vary params, wrap this in an iterator and modify the below helper function
+    @everywhere beta,gamma,delta,exo,tmax = $beta,$gamma,$delta,$exo,$tmax
+    @everywhere cached_edges_function(seednode) = sirs(edges,seednode,beta,gamma,delta,exo,tmax) 
+    #main pmap function call
+    infection_results = @showprogress pmap(x->cached_edges_function(x),seed_nodes)
+    #clean up
+    return infection_results
+end 
 
-# Random.seed!(1234)
-# A = MatrixNetworks.readSMAT("data/study-25-150.smat")
-# edges = zip(MatrixNetworks.findnz(A)[1:2]...)
-
-# result = sirs(edges, 1, 5e-3, 5e-2, 1/365, 5/1e5, 365*10)
-# fig = Figure()
-# ax = Axis(fig[1, 1], yscale = log10)
-# lines!(result)
-# display(fig)
-
-n = 5000
-hedges, xy = spatial_hypergraph_edges(n, 2)
-# scatter(xy[1,:],xy[2,:])
-# hedges
-beta,gamma,delta,exo,tmax = 5e-2,5e-2,1/100,15/1e6,2000
-result = sirs_hyper(hedges,1,beta,gamma,delta,exo,tmax)
-fig = Figure()
-ax = Axis(fig[1, 1],title="HigherOrder-SIRS")
-lines!(result)
-display(fig)
-
-
-edges = project(hedges)
-result = sirs(edges, 1, beta,gamma,delta,exo,tmax)
-fig = Figure()
-ax = Axis(fig[1, 1],title="Pairwise-SIRS")
-lines!(result)
-display(fig)
+function parallel_sirs_hyper(hedges, seed_nodes;
+                        beta=3e-2, gamma=5e-2, delta=1/365, exo=5/100000, tmax=365*10)
+    println("USING $(lastindex(workers())) WORKERS for $(lastindex(seed_nodes)) NODES")
+    #cache worker information
+    @everywhere hedges = $hedges 
+    #temporary.. if we want to vary params, wrap this in an iterator and modify the below helper function
+    @everywhere beta,gamma,delta,exo,tmax = $beta,$gamma,$delta,$exo,$tmax
+    @everywhere cached_edges_function(seednode) = sirs_hyper(hedges,seednode,beta,gamma,delta,exo,tmax) 
+    #main pmap function call
+    infection_results = @showprogress pmap(x->cached_edges_function(x),seed_nodes)
+    #clean up
+    return infection_results
+end
