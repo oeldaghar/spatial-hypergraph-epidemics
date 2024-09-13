@@ -21,8 +21,10 @@ function _edge_list_to_neighbor_list(edges)
     end
     return neighbors
 end
-# create an enum for the possible states
-@enum NodeState StateSucceptible=1 StateInfected=2 StateRecovered=3
+#replacing enum with smaller memory footprint based on profiling results.
+const StateSucceptible = Int8(1)
+const StateInfected = Int8(2)
+const StateRecovered = Int8(3)
 function _update_state!(neighborlist, currstate, newstate, beta, gamma, delta, exo=5/100000)
     copy!(newstate, currstate) # copy the current state to the new state
     for i in eachindex(neighborlist)
@@ -55,12 +57,12 @@ function sirs(edges::Vector{T}, seednodes::Vector{Int}, beta=3e-2, gamma=5e-2, d
     neighlist = _edge_list_to_neighbor_list(edges)
     n = length(neighlist)
     
-    state = Vector{NodeState}(undef, n)
+    state = Vector{Int8}(undef, n)
     fill!(state, StateSucceptible)
     for node in seednodes
         state[node] = StateInfected
     end
-    newstate = Vector{NodeState}(undef, n)
+    newstate = Vector{Int8}(undef, n)
 
     ninfected = zeros(Int, tmax)
 
@@ -69,7 +71,7 @@ function sirs(edges::Vector{T}, seednodes::Vector{Int}, beta=3e-2, gamma=5e-2, d
         _update_state!(neighlist, state, newstate, beta, gamma, delta, exo)
         state, newstate = newstate, state # swap... 
     end
-    return ninfected
+    return ninfected,state
 end 
 sirs(edges, seednode::Int, beta=3e-2, gamma=5e-2, delta=5e-2, exo=5/100000, tmax=365*10) = sirs(edges, [seednode], beta, gamma, delta, exo, tmax)
 
@@ -101,23 +103,28 @@ function _hyperedge_list_to_neighbor_list(hedges)
 end
 #TODO cache info on hyperedge stats (number of infected nodes)
 #try caching at beginning of iteration and do a lookup
-function _update_state_hyper!(hyper_neighborlist, currstate, newstate, beta, gamma, delta, exo=5/100000)
-    copy!(newstate, currstate) # copy the current state to the new state
-    for i in eachindex(hyper_neighborlist)
+mutable struct Neighbor
+    ego_edge::Vector{Int}
+    weight::Int
+end
+function _update_state_hyper!(weighted_neighlist::Vector{Vector{Neighbor}}, currstate::Vector{Int8}, newstate::Vector{Int8}, beta::Float64, gamma::Float64, delta::Float64, exo::Float64=5/100000)
+    copy!(newstate, currstate) # copy the current state to the new state)
+    @inbounds for i in eachindex(weighted_neighlist)
         if rand() < exo # exogenous infection #5 per 100k cases per unit time
             newstate[i] = StateInfected
             continue 
         end
         if currstate[i] == StateSucceptible
             #check hyper neighbors 
-            for i_ego_edge in hyper_neighborlist[i] #hedge = [i,other nodes], then ego_edge = [other nodes]
+            for hyper_neighbor in weighted_neighlist[i] #hedge = [i,other nodes], then ego_edge = [other nodes]
                 #measure fraction of nodes infected 
-                infected_ego_size = 0
-                for j in i_ego_edge
-                    if currstate[j] == StateInfected
-                        infected_ego_size+=1
-                    end
-                end
+                # infected_ego_size = 0
+                # for j in i_ego_edge
+                #     if currstate[j] == StateInfected
+                #         infected_ego_size+=1
+                #     end
+                # end
+                i_ego_edge,infected_ego_size = hyper_neighbor.ego_edge,hyper_neighbor.weight
                 #define hyperedge contribution
                 # hyper_beta = f(|h|,|h ⋂ I|)... figure out later
                 if infected_ego_size>0
@@ -142,23 +149,59 @@ function _update_state_hyper!(hyper_neighborlist, currstate, newstate, beta, gam
             end
         end
     end
+    #update weights in weighted_hyper_neighlist 
+    @inbounds for node=1:lastindex(weighted_neighlist)
+        for hyper_neighbor in weighted_neighlist[node]
+            ego_edge = hyper_neighbor.ego_edge
+            s = 0 
+            for i in ego_edge
+                if newstate[i]==StateInfected
+                    s+=1
+                end
+            end
+            #update weight
+            hyper_neighbor.weight = s
+        end
+    end
 end
-function sirs_hyper(hedges, seednodes::Vector{Int}, beta=1e-2, gamma=5e-2, delta=1/365, exo=5/100000, tmax=365*10)
+function sirs_hyper(hedges::Vector{Vector{Int}}, seednodes::Vector{Int}, beta::Float64=1e-2, gamma::Float64=5e-2, delta::Float64=1/365, exo::Float64=5/100000, tmax::Int=365*10)
     neighlist = _hyperedge_list_to_neighbor_list(hedges)
+    #modifying preallocation of weighted neighbors
+    weighted_neighlist = Vector{Vector{Neighbor}}(undef, length(neighlist))
+    for i in eachindex(neighlist)
+        weighted_neighlist[i] = [Neighbor(y, 0) for y in neighlist[i]]
+    end
+    # weighted_neighlist = map(x->([[y,0] for y in x]),neighlist)
+    # weighted_neighlist = Vector{Vector{Union{Vector{Int},Int}}}(weighted_neighlist)
+    
     n = length(neighlist)
     
-    state = Vector{NodeState}(undef, n)
+    state = Vector{Int8}(undef, n)
     fill!(state, StateSucceptible)
     for node in seednodes
         state[node] = StateInfected
     end
-    newstate = Vector{NodeState}(undef, n)
+    #update weights to be num of infected nodes in each hyper ego_edge
+    for node=1:lastindex(weighted_neighlist)
+        for hyper_neighbor in weighted_neighlist[node]
+            ego_edge = hyper_neighbor.ego_edge
+            s = 0 
+            for i in ego_edge
+                if state[i]==StateInfected
+                    s+=1
+                end
+            end
+            #update weight
+            hyper_neighbor.weight = s
+        end
+    end
+    newstate = Vector{Int8}(undef, n)
 
     ninfected = zeros(Int, tmax)
 
     @showprogress for t in 1:tmax
         ninfected[t] = count(x->x==StateInfected, state)
-        _update_state_hyper!(neighlist, state, newstate, beta, gamma, delta, exo)
+        _update_state_hyper!(weighted_neighlist, state, newstate, beta, gamma, delta, exo)
         state, newstate = newstate, state # swap... 
     end
     return ninfected,state
@@ -180,7 +223,6 @@ function parallel_sirs(edges, seed_nodes;
     #clean up
     return infection_results
 end 
-
 function parallel_sirs_hyper(hedges, seed_nodes;
                         beta=3e-2, gamma=5e-2, delta=1/365, exo=5/100000, tmax=365*10)
     println("USING $(lastindex(workers())) WORKERS for $(lastindex(seed_nodes)) NODES")
@@ -194,4 +236,3 @@ function parallel_sirs_hyper(hedges, seed_nodes;
     #clean up
     return infection_results
 end
-
