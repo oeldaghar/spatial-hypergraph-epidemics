@@ -1,73 +1,82 @@
 #load code on all workers
 using Distributed
 using Statistics
-addprocs(2)
+using DelimitedFiles
+addprocs(5)
 
 println("LOADING CODE FILES AND PACKAGES")
 @everywhere include("sirs.jl")
+include("data-io.jl")
 
-fnames = filter(x->endswith(x,".txt"),readdir("data/hypergraphs/"))
+fnames = filter!(x->endswith(x,".txt"),readdir("data/hypergraphs/"))
+fnames = get_fnames(get_gname(fnames[1]))
 
-fname = fnames[1]
-hedges = read_hedges(joinpath("data/hypergraphs/$(fnames[1])"))
-edges = project(hedges)
+#sample random nodes across all graphs
+n = parse(Int,split(fnames[1],'-')[3])
+num_nodes_sampled = 10
+Random.seed!(42)
+seed_nodes = Distributions.sample(1:n,num_nodes_sampled,replace=false)
 
-
-nnodes = maximum(x->maximum(x),edges)
-seed_nodes = Distributions.sample(1:nnodes,100,replace=false)
-
-pairwise_results = parallel_sirs(edges,seed_nodes)
-hyper_results = parallel_sirs_hyper(hedges,seed_nodes)
-
-pairwise_data = hcat(pairwise_results...)';
-hyper_data = hcat(hyper_results...)';
-
-function make_simulation_bands(pairwise_data,hyper_data)
-    #figure layout 
-    #put figures side by side 
-    fig = Figure(resolution=(1000, 400))
-    left_column = fig[1, 1] = GridLayout()
-    right_column = fig[1, 2] = GridLayout()
-    # Create axes in each column
-    ax1 = Axis(left_column[1, 1], 
-                title="HigherOrder Model",
-                xlabel="Time",
-                ylabel="Total Infections")
-    ax2 = Axis(right_column[1, 1],
-                title="Pairwise Model",
-                xlabel="Time",
-                ylabel="Total Infections")
-    # Make plotting data 
-    #get average and 2.5-97.5 quantiles 
-    pairwise_avgs = mapslices(x->mean(x),pairwise_data,dims=1)
-    pairwise_ylow = mapslices(x->quantile(x,0.01),pairwise_data,dims=1)
-    pairwise_yhigh = mapslices(x->quantile(x,0.99),pairwise_data,dims=1)
-    pairwise_avgs,pairwise_ylow,pairwise_yhigh = vec(pairwise_avgs),vec(pairwise_ylow),vec(pairwise_yhigh)
-
-    #hyper data 
-    hyper_avgs = mapslices(x->mean(x),hyper_data,dims=1)
-    hyper_ylow = mapslices(x->quantile(x,0.01),hyper_data,dims=1)
-    hyper_yhigh = mapslices(x->quantile(x,0.99),hyper_data,dims=1)
-    hyper_avgs,hyper_ylow,hyper_yhigh = vec(hyper_avgs),vec(hyper_ylow),vec(hyper_yhigh)
-    
-    #render 
-    lines!(ax1, hyper_avgs,color=(:blue,1.0))
-    band!(ax1, 1:lastindex(hyper_avgs), hyper_ylow, hyper_yhigh, color=(:blue, 0.25))
-    
-    lines!(ax2, pairwise_avgs,color=(:red,1.0))
-    band!(ax2, 1:lastindex(pairwise_avgs), pairwise_ylow, pairwise_yhigh, color=(:red, 0.25))
-
-    linkaxes!(ax1, ax2)
-    # Display the figure
-    return fig,ax1,ax2     
+beta,gamma,delta,exo,tmax = 0.9,1e-1,1/100,5/1e6,365*10
+# hyperr_beta_func = "linear" # "sqrt", "squared"
+# run parallel code and save data 
+for hyper_beta_func in ["linear","sqrt","squared"]
+    @showprogress for fname in fnames 
+        #load data 
+        hedges = read_hedges(fname)
+        println("RUNNING PARALLEL EPIDEMIC CODE...")
+        hyper_results = parallel_sirs_hyper(hedges,seed_nodes;
+                                                beta=beta, gamma=gamma, delta=delta, exo=exo, 
+                                                tmax=tmax, hyper_beta_func=hyper_beta_func)
+        hyper_data = hcat(hyper_results...)'
+        
+        gname = split(fname,'/')[end]
+        if endswith(gname,".txt")
+            gname = gname[1:end-4]
+        end 
+        file_name = "data/output/sirs/$gname%sirs-$beta-$gamma-$delta-$exo-$tmax-$hyper_beta_func.txt"
+        open(file_name, "w") do io
+            writedlm(io, hyper_data)
+        end
+    end
 end
 
 
-fig,ax1,ax2 = make_simulation_bands(pairwise_data,hyper_data)
-fig
 
-xlims!(ax1,100,5000)
-xlims!(ax2,100,5000)
-ylims!(ax1,0,500)
-ylims!(ax2,0,500)
-display(fig)
+# make plot
+
+# hyper_results = parallel_sirs_hyper(hedges,seed_nodes)
+# hyper_data = hcat(hyper_results...)';
+
+# function make_simulation_bands(hyper_data)
+#     #figure layout 
+#     #put figures side by side 
+#     fig = Figure()
+#     # Create axes in each column
+#     ax = Axis(fig[1,1], 
+#                 title="HigherOrder Model",
+#                 xlabel="Time",
+#                 ylabel="Total Infections")
+#     # Make plotting data 
+#     hyper_avgs = mapslices(x->mean(x),hyper_data,dims=1)
+#     hyper_ylow = mapslices(x->quantile(x,0.01),hyper_data,dims=1)
+#     hyper_yhigh = mapslices(x->quantile(x,0.99),hyper_data,dims=1)
+#     hyper_avgs,hyper_ylow,hyper_yhigh = vec(hyper_avgs),vec(hyper_ylow),vec(hyper_yhigh)
+    
+#     #render 
+#     lines!(ax, hyper_avgs,color=(:blue,1.0))
+#     band!(ax, 1:lastindex(hyper_avgs), hyper_ylow, hyper_yhigh, color=(:blue, 0.25))
+    
+#     # Display the figure
+#     return fig,ax
+# end
+
+
+# fig,ax = make_simulation_bands(hyper_data)
+# fig
+
+# xlims!(ax1,100,5000)
+# xlims!(ax2,100,5000)
+# ylims!(ax1,0,500)
+# ylims!(ax2,0,500)
+# display(fig)

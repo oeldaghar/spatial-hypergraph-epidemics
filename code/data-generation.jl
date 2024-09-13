@@ -5,6 +5,7 @@ using Random, MatrixNetworks
 include("hypergraph-tools.jl")
 include("spatial-hypergraph.jl")
 using DelimitedFiles
+using ProgressMeter
 
 """
     generate_data(n,k;rseed=1,ngraphs=5)
@@ -18,7 +19,8 @@ function generate_data(n=5000,d=2,ngraphs=5;rseed=1)
     #interpolates between the alpha=0 (pairwise case) and alpha=2 (entire neighborhood as hyperedge)
     alphas = range(0,2,length=ngraphs)
 
-    for i=1:ngraphs
+    println("GENERATING SYNTHETIC GRAPHS..")
+    @showprogress for i=1:ngraphs
         random_seed = random_seeds[i]
         alpha = alphas[i]
         #set random seed 

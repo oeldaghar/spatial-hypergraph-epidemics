@@ -107,7 +107,13 @@ mutable struct Neighbor
     ego_edge::Vector{Int}
     weight::Int
 end
-function _update_state_hyper!(weighted_neighlist::Vector{Vector{Neighbor}}, currstate::Vector{Int8}, newstate::Vector{Int8}, beta::Float64, gamma::Float64, delta::Float64, exo::Float64=5/100000)
+# function get_hyper_beta(beta,k,normalization=x->x) 
+#     hyper_beta = 1-(1-beta)^k 
+#     hyper_beta/=normalization(k)
+#     return 
+# end
+# hyper_beta_func options: "linear", "sqrt", or "squared"
+function _update_state_hyper!(weighted_neighlist::Vector{Vector{Neighbor}}, currstate::Vector{Int8}, newstate::Vector{Int8}, beta::Float64, gamma::Float64, delta::Float64, exo::Float64=5/100000,hyper_beta_func::String="linear")
     copy!(newstate, currstate) # copy the current state to the new state)
     @inbounds for i in eachindex(weighted_neighlist)
         if rand() < exo # exogenous infection #5 per 100k cases per unit time
@@ -130,7 +136,15 @@ function _update_state_hyper!(weighted_neighlist::Vector{Vector{Neighbor}}, curr
                 if infected_ego_size>0
                     # hyper_beta = beta #change later..
                     hyper_beta = 1-(1-beta)^infected_ego_size 
-                    hyper_beta/=lastindex(i_ego_edge)
+                    if hyper_beta_func=="linear"
+                        hyper_beta/=lastindex(i_ego_edge)
+                    elseif hyper_beta_func=="sqrt"
+                        hyper_beta/=sqrt(lastindex(i_ego_edge))
+                    elseif hyper_beta_func=="squared"
+                        hyper_beta/=(lastindex(i_ego_edge)^2)
+                    else
+                        ArgumentError("hyper_beta_func should be one of 'linear', 'sqrt', or 'squared'"  )
+                    end
                     # hyper_beta/=lastindex(i_ego_edge)
                     #alter this probability downwards a term like sqrt(|h|). something about air to room ratio and airflow. check details.
                     if rand() < hyper_beta
@@ -164,7 +178,7 @@ function _update_state_hyper!(weighted_neighlist::Vector{Vector{Neighbor}}, curr
         end
     end
 end
-function sirs_hyper(hedges::Vector{Vector{Int}}, seednodes::Vector{Int}, beta::Float64=1e-2, gamma::Float64=5e-2, delta::Float64=1/365, exo::Float64=5/100000, tmax::Int=365*10)
+function sirs_hyper(hedges::Vector{Vector{Int}}, seednodes::Vector{Int}, beta::Float64=1e-2, gamma::Float64=5e-2, delta::Float64=1/365, exo::Float64=5/100000, tmax::Int=365*10,hyper_beta_func::String="linear")
     neighlist = _hyperedge_list_to_neighbor_list(hedges)
     #modifying preallocation of weighted neighbors
     weighted_neighlist = Vector{Vector{Neighbor}}(undef, length(neighlist))
@@ -201,12 +215,12 @@ function sirs_hyper(hedges::Vector{Vector{Int}}, seednodes::Vector{Int}, beta::F
 
     @showprogress for t in 1:tmax
         ninfected[t] = count(x->x==StateInfected, state)
-        _update_state_hyper!(weighted_neighlist, state, newstate, beta, gamma, delta, exo)
+        _update_state_hyper!(weighted_neighlist, state, newstate, beta, gamma, delta, exo, hyper_beta_func)
         state, newstate = newstate, state # swap... 
     end
     return ninfected,state
 end 
-sirs_hyper(hedges, seednode::Int, beta=3e-2, gamma=5e-2, delta=5e-2, exo=5/100000, tmax=365*10) = sirs_hyper(hedges, [seednode], beta, gamma, delta, exo, tmax)
+sirs_hyper(hedges, seednode::Int, beta=3e-2, gamma=5e-2, delta=5e-2, exo=5/100000, tmax=365*10, hyper_beta_func="linear") = sirs_hyper(hedges, [seednode], beta, gamma, delta, exo, tmax,hyper_beta_func)
 
 #TODO update with previous changes 
 ### parallel version of the code
@@ -224,13 +238,13 @@ function parallel_sirs(edges, seed_nodes;
     return infection_results
 end 
 function parallel_sirs_hyper(hedges, seed_nodes;
-                        beta=3e-2, gamma=5e-2, delta=1/365, exo=5/100000, tmax=365*10)
+                        beta=3e-2, gamma=5e-2, delta=1/365, exo=5/100000, tmax=365*10, hyper_beta_func="linear")
     println("USING $(lastindex(workers())) WORKERS for $(lastindex(seed_nodes)) NODES")
     #cache worker information
     @everywhere hedges = $hedges 
     #temporary.. if we want to vary params, wrap this in an iterator and modify the below helper function
-    @everywhere beta,gamma,delta,exo,tmax = $beta,$gamma,$delta,$exo,$tmax
-    @everywhere cached_edges_function(seednode) = first(sirs_hyper(hedges,seednode,beta,gamma,delta,exo,tmax)) 
+    @everywhere beta,gamma,delta,exo,tmax,hyper_beta_func = $beta,$gamma,$delta,$exo,$tmax,$hyper_beta_func
+    @everywhere cached_edges_function(seednode) = first(sirs_hyper(hedges,seednode,beta,gamma,delta,exo,tmax,hyper_beta_func)) 
     #main pmap function call
     infection_results = @showprogress pmap(x->cached_edges_function(x),seed_nodes)
     #clean up
