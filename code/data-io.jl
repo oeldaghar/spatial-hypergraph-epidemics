@@ -1,4 +1,5 @@
 #TODO file/data naming/loading to a data IO file.
+using DelimitedFiles
 function get_gname(fname::String)
     parts = split(fname,'-')
     gname = join(parts[1:end-2],'-')
@@ -31,3 +32,23 @@ end
 #example usage 
 # fnames = filter!(x->endswith(x,".txt"),readdir("data/hypergraphs/"))
 # fnames = get_fnames(get_gname(fnames[1]))
+
+
+# #functions for loading output data from sirs experiments. 
+# #fnames look something like "{gname}-{parameters}%{sirs}-{parameters}.txt with {%} serving as the separator between the two
+# function get_data_fnames(gname,hyper_beta_func)
+#     #get all filenames associated with a graph for a given hyper_beta_funciton (linear, sqrt, squared)
+#     fnames = readdir("data/output/sirs")
+#     filter!(x->startswith(x,gname),fnames)
+#     parts = split.(fnames,'%')
+#     gnames = first(parts)
+#     epidemics = map(x->x[2],parts)
+
+
+# end
+
+# tmp = readdir("data/output/sirs")
+# g1 = split.(tmp,'%')[1][1]
+# filter!(x->startswith(x,g1),tmp)
+
+# println(tmp[1])
