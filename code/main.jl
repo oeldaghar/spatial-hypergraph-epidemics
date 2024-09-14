@@ -1,15 +1,10 @@
-# using Random, MatrixNetworks
-# include("hypergraph-tools.jl")
-# include("spatial-hypergraph.jl")
-# using Random
-
 #generate input data
 include("data-generation.jl")
 #starter data
 generate_data(5000,2,15)
 generate_data(50000,2,15)
 
-#generate experiment data 
+### GENERATE DATA 
+include("parallel-epidemics.jl")
 
-
-#build figures 
+#build figures.. manual process so far 

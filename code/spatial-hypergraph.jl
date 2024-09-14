@@ -41,6 +41,46 @@ function hypergraph_edges(X;degreedist=LogNormal(log(3),1),radfunc=(dist,deg) ->
   return edges, X
 end
 
+function hypergraph_edges(X;degs=rand(LogNormal(log(3),1),lastindex(X,2)),radfunc=(dist,deg) -> dist/sqrt(deg))
+  T = BallTree(X)
+  # form the edges for sparse
+  edges = Vector{Int}[]
+  n = lastindex(X,2)
+  for i=1:n #X
+    deg = degs[i]
+    idxs, dists = knn(T, X[:,i], deg+1)
+    if deg > 1 
+      maxdist = maximum(dists) 
+      pts = @view X[:,idxs]
+      rad = radfunc(maxdist,deg)
+      # if !(rad ≈ maxdist)
+      #   println("rad: ", rad, " maxdist: ", maxdist)
+      # end
+      clusters = dbscan(pts, rad)
+      for c in clusters
+        e = [i]
+        for v in c.core_indices
+          if idxs[v] != i
+            push!(e, idxs[v])
+          end
+        end
+        for v in c.boundary_indices
+          if idxs[v] != i 
+            push!(e, idxs[v])
+          end
+        end
+        if length(e) > 1
+          push!(edges, e)
+        end
+      end
+    else
+      # only one vertex! 
+      push!(edges, [i,idxs[2]])
+    end 
+  end 
+  return edges, X
+end
+
 function spatial_hypergraph_edges(n::Integer,d::Integer;kwargs...)
   X = rand(d,n)
   return hypergraph_edges(X;kwargs...)
