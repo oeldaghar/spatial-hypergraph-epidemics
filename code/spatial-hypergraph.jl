@@ -41,7 +41,7 @@ function hypergraph_edges(X;degreedist=LogNormal(log(3),1),radfunc=(dist,deg) ->
   return edges, X
 end
 
-function hypergraph_edges(X;degs=rand(LogNormal(log(3),1),lastindex(X,2)),radfunc=(dist,deg) -> dist/sqrt(deg))
+function hypergraph_edges(X;degs::Vector{S}=rand(LogNormal(log(3),1),lastindex(X,2)),radfunc=(dist,deg) -> dist/sqrt(deg)) where S
   T = BallTree(X)
   # form the edges for sparse
   edges = Vector{Int}[]
