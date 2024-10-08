@@ -11,7 +11,7 @@ function hypergraph_edges(X,deg_list;radfunc=(dist,deg) -> dist/sqrt(deg))
             maxdist = maximum(dists) 
             pts = @view X[:,idxs]
             rad = radfunc(maxdist,deg)
-            clusters = dbscan(pts, rad).clusters
+            clusters = dbscan(pts, rad)
             for c in clusters
                 e = [i]
                 for v in c.core_indices
@@ -50,9 +50,6 @@ d = 2
 n = 50000
 # n = 100
 
-plt = plot(layout=(1,2), margin=6*Plots.mm)
-plot!(plt, size=(800,300))
-
 ##### plot heatmap about hyperedge size distribution
 
 X = rand(d,n)
@@ -77,20 +74,6 @@ end
 
 edge_cnt_normalized = edge_cnt ./ sum(edge_cnt, dims=1)
 
-heatmap!(plt, log10.(edge_cnt_normalized), 
-        xlabel=L"\alpha",
-        ylabel="Hyperedge size",
-        xticks=([1,7,13,19,25], [0.0, 0.5, 1.0, 1.5, 2.0]),
-        # yticks=([1,2,3,4,5,6,7,8,9],[2,3,4,5,6,7,8,9,10]),
-        yscale=:log10,
-        # zscale=:log10, 
-        color=:viridis,
-        # color=:cividis,
-        # color=:inferno,
-        # color=:plasma,
-        # color=:reds,
-        subplot=1)
-
 ### plot number of hyperedges vs alpha
 
 function run_trial()
@@ -114,11 +97,33 @@ quantiles = [0.1,0.25,0.5,0.75,0.9]
 linewidths = [0.5, 1, 2, 1, 0.5]
 colors = [:lightgrey, :grey, :black, :grey, :lightgrey]
 
-plot!(plt, xlabel=L"\alpha", ylabel="Number of hyperedges", subplot=2)
+
+plt = Plots.plot(layout=(1,2), margin=6*Plots.mm)
+Plots.plot!(plt, size=(800,300))
+
+Plots.heatmap!(plt, log10.(edge_cnt_normalized), 
+        xlabel=L"\alpha",
+        ylabel="Hyperedge size",
+        xticks=([1,7,13,19,25], [0.0, 0.5, 1.0, 1.5, 2.0]),
+        # yticks=([1,2,3,4,5,6,7,8,9],[2,3,4,5,6,7,8,9,10]),
+        yscale=:log10,
+        # zscale=:log10, 
+        color=:viridis,
+        # color=:cividis,
+        # color=:inferno,
+        # color=:plasma,
+        # color=:reds,
+        subplot=1)
+
+
+Plots.plot!(plt, xlabel=L"\alpha", ylabel="Number of hyperedges", subplot=2)
 for (q, lw, c) in zip(quantiles, linewidths, colors)
     nedges_q = quantile.(eachrow(nedges), q)
-    plot!(plt, alphas, nedges_q, label="", linewidth=lw, color=c, subplot=2)
+    Plots.plot!(plt, alphas, nedges_q, label="", linewidth=lw, color=c, subplot=2)
 end
+
+#touch up margins
+Plots.plot!(plt[2],left_margin=0Measures.mm)
 
 display(plt)
 
