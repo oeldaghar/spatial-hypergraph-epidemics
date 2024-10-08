@@ -1,5 +1,6 @@
 using Distributed
-addprocs(17)
+using ProgressMeter
+addprocs(26)
 
 @everywhere include("hypergraph-tools.jl")
 @everywhere include("spatial-hypergraph.jl")
@@ -58,7 +59,11 @@ function plot_data(trials)
   linewidths = [0.5, 1, 2, 1, 0.5]
   colors = [:lightgrey, :grey, :black, :grey, :lightgrey]
 
-  p = Plots.plot(xlabel="α", ylabel="Number of edges")
+  p = Plots.plot(xlabel="α", ylabel="Number of edges",
+      framestyle=:grid,
+      tickfontsize=10,
+      yguidefontsize = 15,
+      xguidefontsize = 15)
   for (q, lw, c) in zip(quantiles, linewidths, colors)
     nedges_q = quantile.(eachrow(nedges), q)
     Plots.plot!(p, alphas, nedges_q, label="", linewidth=lw, color=c)
@@ -91,99 +96,42 @@ end
 ##
 projected_trials_squared = @showprogress map(x->run_projected_trial(scalefunc=x->1/x^2), 1:25)  
 p1 = plot_data(projected_trials_squared)
-Plots.plot!(p1, ylabel="Weighted projected edge volume")
-p1
-
+Plots.plot!(p1, ylabel="")
+Plots.plot!(p1,title="g(m)=m²",
+    titlefont=font("Helvetica Bold", 14))
 
 ##
 projected_trials_sqrt = @showprogress map(x->run_projected_trial(scalefunc=x->1/sqrt(x)), 1:25)  
 p2 = plot_data(projected_trials_sqrt)
-Plots.plot!(p2, ylabel="Weighted projected edge volume")
-p2
-
+Plots.plot!(p2, ylabel="")
+Plots.plot!(p2,title="g(m)=sqrt(m)",
+    titlefont=font("Helvetica Bold", 14))
 
 ##
 projected_trials = @showprogress map(x->run_projected_trial(), 1:25)  
 p3 = plot_data(projected_trials)
-Plots.plot!(p3, ylabel="Weighted projected edge volume")
-p3
+Plots.plot!(p3, ylabel="Weighted Projected\nEdge Volume")
+Plots.plot!(p3,title="g(m)=m",
+    titlefont=font("Helvetica Bold", 14))
 
 ##
-
 
 using Measures
 #making combined plot
 figs = Plots.plot(p3,p2,p1,
             layout=(1,3),size=(1400,400),
-            bottom_margin=8Measures.mm,left_margin=8Measures.mm,
+            bottom_margin=8Measures.mm,
 )
+#visual spacing
+Plots.plot!(figs[1],left_margin=12Measures.mm)
+Plots.plot!(figs[3],right_margin=8Measures.mm)
+#increase resolution
+Plots.plot!(figs,dpi=300)
+
 Plots.savefig(figs,"data/output/figures/final/projected-degree.pdf")
 Plots.savefig(figs,"data/output/figures/final/projected-degree.png")
 
-
-
-# ##figures for degree distribution by size 
-# function run_projected_trial(;scalefunc=x->1/x)
-#     X = rand(d,n)
-#     degreedist=LogNormal(log(3),1)
-#     degs = rand(degreedist,n)
-#     degs = min.(ceil.(Int,degs),n-1)
-
-#     graphs = pmap(alpha -> hypergraph_edges(X;degs=degs,radfunc=get_func(alpha))[1], alphas)
-#     # map(x->,graphs)
-#     nedges = map(x->_project_graph_avgdegrees(x;scalefunc), graphs)
-#     return nedges   
-# end 
-
-
-manual_xlims = (-1,130)
-p1 = Plots.histogram(length.(graphs[1]),
-            normalize=:probability,label=false,
-            xlabel="Hyperedge Size",
-            ylabel="Fraction of Hyperedges")
-Plots.xlims!(manual_xlims)
-p2 = Plots.histogram(length.(graphs[13]),
-            normalize=:probability,label=false,
-            xlabel="Hyperedge Size",
-            ylabel="Fraction of Hyperedges")
-Plots.xlims!(manual_xlims)
-p3 = Plots.histogram(length.(graphs[end]),
-            normalize=:probability,label=false,
-            xlabel="Hyperedge Size",
-            ylabel="Fraction of Hyperedges")
-Plots.xlims!(manual_xlims)
-
-Plots.plot(p1,p2,p3,link=:both,layout=(1,3),size=(1400,400),
-            bottom_margin=8Measures.mm,
-            left_margin=8Measures.mm)
-
-function logscale_histogram(xs,ymin=1/length(xs),normalize_y::Bool=true;logx::Bool=false,maxbins::Int=5000)
-    maxbins = min(maxbins,ceil(1+max(abs.(extrema(xs))...)))
-    h = float(StatsBase.fit(Histogram,xs,nbins=maxbins))
-    if normalize_y
-        h.weights./=length(xs)
-        ymax = 1
-    else
-        ymax = length(xs)
-    end
-
-    #a little padding to make plots look better
-    bins = [collect(h.edges[1]);maximum(h.edges[1])+step(h.edges[1])]
-    w = [h.weights;0] .+ 0.5*ymin
-    if logx
-        f = Plots.plot(bins,w,seriestype=:barbins,label="",
-                xlims=(1,2*maximum(xs)),xscale=:log10,
-                ylims=(ymin,ymax),yscale=:log10,bar_width=step(h.edges[1]),lims=:round)
-    else
-        f = Plots.plot(bins,w,seriestype=:barbins,label="",
-                xlims=(0,maximum(xs)+2),ylims=(ymin,ymax),yscale=:log10,lims=:round)
-    end
-    return f
-end
-using StatsBase
-p1 = logscale_histogram(length.(graphs[1]))
-p2 = logscale_histogram(length.(graphs[13]))
-p3 = logscale_histogram(length.(graphs[end]))
-
-
-counts(length.(graphs[end]))
+#link yaxes for a version 2 of the plot
+Plots.plot!(figs,link=:y)
+Plots.savefig(figs,"data/output/figures/final/projected-degree-v2.pdf")
+Plots.savefig(figs,"data/output/figures/final/projected-degree-v2.png")

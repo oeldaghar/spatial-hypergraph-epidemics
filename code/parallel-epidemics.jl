@@ -2,7 +2,7 @@
 using Distributed
 using Statistics
 using DelimitedFiles
-addprocs(25)
+# addprocs(25)
 
 println("LOADING CODE FILES AND PACKAGES")
 @everywhere include("sirs.jl")

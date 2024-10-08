@@ -122,4 +122,4 @@ end
 
 display(plt)
 
-# savefig(plt, "fig3-1234.pdf")
+savefig(plt, "data/output/figures/final/fig3-1234.pdf")

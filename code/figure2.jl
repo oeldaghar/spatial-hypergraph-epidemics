@@ -95,4 +95,4 @@ plot_subfig(4, 8)
 
 display(plt)
 
-savefig(plt, "fig2.pdf")
+savefig(plt, "data/output/figures/final/fig2.pdf")
