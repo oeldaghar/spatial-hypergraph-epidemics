@@ -50,13 +50,13 @@ Plots.plot!(p3,title="g(m)=m",
 #### COMBINING PLOTS
 figs = Plots.plot(p3,p2,p1,
             layout=(1,3),size=(1400,400),
-            bottom_margin=8Measures.mm,
+            bottom_margin=10Measures.mm,
 )
 #visual spacing
-Plots.plot!(figs[1],left_margin=12Measures.mm)
+Plots.plot!(figs[1],left_margin=14Measures.mm)
 Plots.plot!(figs[3],right_margin=8Measures.mm)
 #increase resolution
-Plots.plot!(figs,dpi=300)
+Plots.plot!(figs,titlefontsize=20,tickfontsize=15,guidefontsize=18,dpi=300)
 
 Plots.savefig(figs,"data/output/figures/final/projected-degree.pdf")
 

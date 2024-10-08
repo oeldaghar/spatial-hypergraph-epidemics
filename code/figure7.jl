@@ -44,19 +44,23 @@ projected_trials_linear = Vector{Vector{Float64}}(projected_trials_linear)
 
 #standalone plots
 p1 = plot_data(projected_trials_squared)
-Plots.plot!(p1, ylabel="")
+ticks = yticks(p1)[1]
+Plots.plot!(p1, ylabel="",framestyle=:grid,
+            yticks=(ticks[1],fill("",length(ticks[2]))))
 Plots.plot!(p1,title="g(m)=m²",
     titlefont=font("Helvetica Bold", 14))
 
 p2 = plot_data(projected_trials_sqrt)
-Plots.plot!(p2, ylabel="")
+ticks = yticks(p2)[1]
+Plots.plot!(p2, ylabel="",framestyle=:grid,
+            yticks=(ticks[1],fill("",length(ticks[2]))))
 Plots.plot!(p2,title="g(m)=sqrt(m)",
     titlefont=font("Helvetica Bold", 14))
 
 p3 = plot_data(projected_trials_linear)
-Plots.plot!(p3, ylabel="Weighted Projected λ₁")
-Plots.plot!(p3,title="g(m)=m",
-    titlefont=font("Helvetica Bold", 14))
+Plots.plot!(p3, ylabel="Weighted Projected λ₁",framestyle=:grid,
+            title="g(m)=m",
+            titlefont=font("Helvetica Bold", 14))
 
 #### COMBINING PLOTS
 figs = Plots.plot(p3,p2,p1,
@@ -68,6 +72,7 @@ Plots.plot!(figs[1],left_margin=12Measures.mm)
 Plots.plot!(figs[3],right_margin=8Measures.mm)
 #link yaxes 
 Plots.plot!(figs,link=:y)
+Plots.plot!(figs,guidefontsize=18,tickfontsize=15,titlefontsize=20)
 #increase resolution
 Plots.plot!(figs,dpi=300)
 
