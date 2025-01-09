@@ -1,4 +1,3 @@
-#file for analyzing output from experiments
 include("data-io.jl")
 
 using CairoMakie
@@ -25,19 +24,19 @@ function make_banded_plot(data,title="")
     return f,ax 
 end
 
-function make_individual_figures()
-    fnames = readdir("data/output/sirs/")
-    filter!(x->endswith(x,".txt"),fnames)
-    @showprogress for fname in fnames 
-        data = readdlm(joinpath("data/output/sirs/$fname"))
-        parts = split(fname,'%')
-        f,ax = make_banded_plot(data,"$(parts[1])\n$(parts[2])")
-        plot_file_name = fname[1:end-4]
-        plot_file_name="$plot_file_name%banded.png"
-        save("data/output/figures/$plot_file_name", f)
-    end
-end
-make_individual_figures()
+# function make_individual_figures()
+#     fnames = readdir("data/output/sirs/")
+#     filter!(x->endswith(x,".txt"),fnames)
+#     @showprogress for fname in fnames 
+#         data = readdlm(joinpath("data/output/sirs/$fname"))
+#         parts = split(fname,'%')
+#         f,ax = make_banded_plot(data,"$(parts[1])\n$(parts[2])")
+#         plot_file_name = fname[1:end-4]
+#         plot_file_name="$plot_file_name%banded.png"
+#         save("data/output/figures/$plot_file_name", f)
+#     end
+# end
+# make_individual_figures()
 
 ####### FIGURE 4 
 function figure4_hyperedge_sirs_difference()
@@ -133,7 +132,9 @@ function figure4_hyperedge_sirs_difference()
     f
 
     filename = "data/output/figures/final/time-average-diffuison-50000-alpha-2.pdf"
+    svg_filename = "data/output/figures/poster/time-average-diffuison-50000-alpha-2.svg"
     CairoMakie.save(filename,f,px_per_unit=300)
+    CairoMakie.save(svg_filename,f,px_per_unit=300)
     return f 
 end
 figure4_hyperedge_sirs_difference()
@@ -175,7 +176,8 @@ function figure5_trailing_infs_plot()
             ylabelsize=ylabel_size,
             xlabelsize=xlabel_size,
             yticklabelsvisible = yinfo_bool ? true : false,
-            yticksvisible = yinfo_bool ? true : false)
+            yticksvisible = yinfo_bool ? true : false,
+            backgroundcolor=:gray95)
         hidespines!(ax)
         
         #handle filenames and parameters 
@@ -207,8 +209,11 @@ function figure5_trailing_infs_plot()
         band!(ax, parse.(Float64,alphas), ylow, yhigh, color=(:blue, 0.25))
         CairoMakie.ylims!(2500,4500)
     end
+
     fname = "data/output/figures/final/trailing-infections-normalization-comparison.pdf"
+    svg_fname = "data/output/figures/poster/trailing-infections-normalization-comparison.svg"
     CairoMakie.save(fname,final_fig,px_per_unit=300)
+    CairoMakie.save(svg_fname,final_fig,px_per_unit=300)
     return final_fig
 end
 figure5_trailing_infs_plot()

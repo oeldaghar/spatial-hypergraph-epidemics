@@ -35,11 +35,6 @@ pts = @view xy[:,idxs]
 
 function plot_subfig(subfig, rad)
 
-    Plots.scatter!(plt, 
-             xy[1,:], 
-             xy[2,:], 
-            #  series_annotations=text.(1:n, :bottom, 9),
-             subplot=subfig)
 
     annotate!(plt, xy[1,1]-0.05, xy[2,1]+0.05, Plots.text(1, 11))
     annotate!(plt, xy[1,2]-0.06, xy[2,2]-0.01, Plots.text(2, 11))
@@ -84,6 +79,12 @@ function plot_subfig(subfig, rad)
             Plots.plot!(plt, xy[1,e], xy[2,e], subplot=subfig, c=:blue)
         end
     end
+    Plots.scatter!(plt, 
+             xy[1,:], 
+             xy[2,:], 
+            #  series_annotations=text.(1:n, :bottom, 9),
+             color=1,
+             subplot=subfig)
 end
 
 plot_subfig(1, 0.01)
@@ -93,7 +94,8 @@ plot_subfig(4, 0.4)
 
 display(plt)
 
-savefig(plt, "data/output/figures/final/fig1.pdf")
+# savefig(plt, "data/output/figures/final/fig1.pdf")
+savefig(plt, "data/output/figures/poster/fig1.svg")
 
 
 

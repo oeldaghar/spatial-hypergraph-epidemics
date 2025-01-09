@@ -1,5 +1,5 @@
 using Distributions, Clustering, NearestNeighbors, Random, Plots, LaTeXStrings, Colors
-
+using Measures
 function hypergraph_edges(X,deg_list;radfunc=(dist,deg) -> dist/sqrt(deg))
     T = BallTree(X)
     edges = Vector{Int}[]
@@ -128,3 +128,4 @@ Plots.plot!(plt[2],left_margin=0Measures.mm)
 display(plt)
 
 savefig(plt, "data/output/figures/final/fig3-1234.pdf")
+savefig(plt, "data/output/figures/poster/fig3-1234.svg")

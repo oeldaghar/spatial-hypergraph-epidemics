@@ -72,8 +72,11 @@ Plots.plot!(figs[1],left_margin=12Measures.mm)
 Plots.plot!(figs[3],right_margin=8Measures.mm)
 #link yaxes 
 Plots.plot!(figs,link=:y)
-Plots.plot!(figs,guidefontsize=18,tickfontsize=15,titlefontsize=20)
+Plots.plot!(figs,guidefontsize=18,tickfontsize=15,titlefontsize=20,
+    bottom_margin=12Measures.mm)
+Plots.plot!(figs,background_color_inside=:gray98,top_margin=3Measures.mm)
 #increase resolution
 Plots.plot!(figs,dpi=300)
 
 Plots.savefig(figs,"data/output/figures/final/projected-lambda1.pdf")
+Plots.savefig(figs,"data/output/figures/poster/projected-lambda1.svg")

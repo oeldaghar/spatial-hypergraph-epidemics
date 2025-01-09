@@ -59,7 +59,15 @@ Plots.plot!(figs[3],right_margin=8Measures.mm)
 Plots.plot!(figs,titlefontsize=20,tickfontsize=15,guidefontsize=18,dpi=300)
 
 Plots.savefig(figs,"data/output/figures/final/projected-degree.pdf")
+Plots.savefig(figs,"data/output/figures/poster/projected-degree.svg")
 
 #link yaxes for a version 2 of the plot
 Plots.plot!(figs,link=:y)
+ticks = yticks(figs[1])
+Plots.plot!(figs[2], ylabel="",framestyle=:grid,
+            yticks=(ticks[1],fill("",length(ticks[2]))))
+Plots.plot!(figs[3], ylabel="",framestyle=:grid,
+            yticks=(ticks[1],fill("",length(ticks[2]))))
+Plots.plot!(figs,background_color_inside=:gray98,top_margin=3Measures.mm)
 Plots.savefig(figs,"data/output/figures/final/projected-degree-v2.pdf")
+Plots.savefig(figs,"data/output/figures/poster/projected-degree-v2.svg")

@@ -32,12 +32,6 @@ i = 1
 
 function plot_subfig(subfig, deg)
 
-    Plots.scatter!(plt, 
-            xy[1,:], 
-            xy[2,:], 
-            # series_annotations=text.(1:n, :bottom, 9),
-            subplot=subfig)
-
     annotate!(plt, xy[1,1]-0.05, xy[2,1]+0.05, Plots.text(1, 11))
     annotate!(plt, xy[1,2]-0.06, xy[2,2]-0.01, Plots.text(2, 11))
     annotate!(plt, xy[1,3]-0.05, xy[2,3]-0.05, Plots.text(3, 11))
@@ -85,6 +79,11 @@ function plot_subfig(subfig, deg)
             Plots.plot!(plt, xy[1,e], xy[2,e], subplot=subfig, c=:blue)
         end
     end
+    Plots.scatter!(plt, 
+            xy[1,:], 
+            xy[2,:], 
+            subplot=subfig,
+            color=1)
 
 end
 
@@ -95,4 +94,5 @@ plot_subfig(4, 8)
 
 display(plt)
 
-savefig(plt, "data/output/figures/final/fig2.pdf")
+# savefig(plt, "data/output/figures/final/fig2.pdf")
+savefig(plt, "data/output/figures/poster/fig2.svg")
