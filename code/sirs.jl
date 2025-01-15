@@ -116,7 +116,7 @@ end
 function _update_state_hyper!(weighted_neighlist::Vector{Vector{Neighbor}}, currstate::Vector{Int8}, newstate::Vector{Int8}, beta::Float64, gamma::Float64, delta::Float64, exo::Float64=5/100000,hyper_beta_func::String="linear")
     copy!(newstate, currstate) # copy the current state to the new state)
     @inbounds for i in eachindex(weighted_neighlist)
-        if rand() < exo # exogenous infection #5 per 100k cases per unit time
+        if rand() < exo # exogenous infections
             newstate[i] = StateInfected
             continue 
         end
@@ -233,20 +233,47 @@ function parallel_sirs(edges, seed_nodes;
     @everywhere beta,gamma,delta,exo,tmax = $beta,$gamma,$delta,$exo,$tmax
     @everywhere cached_edges_function(seednode) = first(sirs(edges,seednode,beta,gamma,delta,exo,tmax)) #get infection results but toss out states
     #main pmap function call
-    infection_results = @showprogress pmap(x->cached_edges_function(x),seed_nodes)
+    infection_results = @showprogress pmap(x->compute_graph_stats(x),seed_nodes)
     #clean up
     return infection_results
 end 
-function parallel_sirs_hyper(hedges, seed_nodes;
-                        beta=3e-2, gamma=5e-2, delta=1/365, exo=5/100000, tmax=365*10, hyper_beta_func="linear")
-    println("USING $(lastindex(workers())) WORKERS for $(lastindex(seed_nodes)) NODES")
+# function parallel_sirs_hyper(hedges, seed_nodes;
+#                         beta=3e-2, gamma=5e-2, delta=1/365, exo=5/100000, tmax=365*10, hyper_beta_func="linear")
+#     println("USING $(lastindex(workers())) WORKERS for $(lastindex(seed_nodes)) NODES")
+#     #cache worker information
+#     @everywhere hedges = $hedges 
+#     #temporary.. if we want to vary params, wrap this in an iterator and modify the below helper function
+#     @everywhere beta,gamma,delta,exo,tmax,hyper_beta_func = $beta,$gamma,$delta,$exo,$tmax,$hyper_beta_func
+#     @everywhere cached_edges_function(seednode) = first(sirs_hyper(hedges,seednode,beta,gamma,delta,exo,tmax,hyper_beta_func)) 
+#     #main pmap function call
+#     infection_results = @showprogress pmap(x->cached_edges_function(x),seed_nodes)
+#     #clean up
+#     return infection_results
+# end
+
+# want to do all parameters for a single network. for epidemic parameters, can accept either Float64 or Vector{Float64}
+# for seed_nodes, could be a vector or vector of vectors. 
+function parallel_sirs_hyper(
+    hedges,
+    seed_nodes::Vector{Vector{S}} = [[1]];
+    beta::Vector{T} = [5e-2], 
+    gamma::Vector{T} = [5e-2], 
+    delta::Vector{T} = [1/365], 
+    exo::Vector{T} = [5/100000], 
+    tmax::Vector{S} = [365*10], 
+    hyper_beta_func::Vector{String} = ["linear"]
+) where {T, S}
+
     #cache worker information
     @everywhere hedges = $hedges 
-    #temporary.. if we want to vary params, wrap this in an iterator and modify the below helper function
-    @everywhere beta,gamma,delta,exo,tmax,hyper_beta_func = $beta,$gamma,$delta,$exo,$tmax,$hyper_beta_func
-    @everywhere cached_edges_function(seednode) = first(sirs_hyper(hedges,seednode,beta,gamma,delta,exo,tmax,hyper_beta_func)) 
-    #main pmap function call
-    infection_results = @showprogress pmap(x->cached_edges_function(x),seed_nodes)
+    # wrap other args into an iterator 
+    epi_params = Base.Iterators.product(seed_nodes,beta,gamma,delta,exo,tmax,hyper_beta_func)
+    # helper function for passing parameters. 
+    @everywhere compute_graph_stats(seeds,beta,gamma,delta,exo,tmax,hyper_beta_func) = first(sirs_hyper(hedges,seeds,beta,gamma,delta,exo,tmax,hyper_beta_func)) 
+    
+    println("USING $(lastindex(workers())) WORKERS for $(length(epi_params)) PARAMETERS")
+    #main parallel function call
+    infection_results = @showprogress pmap(x->compute_graph_stats(x...), epi_params)
     #clean up
-    return infection_results
+    return infection_results, epi_params
 end
