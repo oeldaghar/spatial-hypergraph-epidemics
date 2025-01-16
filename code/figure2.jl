@@ -83,7 +83,8 @@ function plot_subfig(subfig, deg)
             xy[1,:], 
             xy[2,:], 
             subplot=subfig,
-            color=1)
+            color=1,
+            markerstrokewidth=0)
 
 end
 
@@ -94,5 +95,5 @@ plot_subfig(4, 8)
 
 display(plt)
 
-# savefig(plt, "data/output/figures/final/fig2.pdf")
-savefig(plt, "data/output/figures/poster/fig2.svg")
+savefig(plt, "data/output/figures/final/fig2.pdf")
+# savefig(plt, "data/output/figures/poster/fig2.svg")

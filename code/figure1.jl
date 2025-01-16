@@ -34,8 +34,6 @@ idxs, dists = knn(T, xy[:,i], deg+1)
 pts = @view xy[:,idxs]
 
 function plot_subfig(subfig, rad)
-
-
     annotate!(plt, xy[1,1]-0.05, xy[2,1]+0.05, Plots.text(1, 11))
     annotate!(plt, xy[1,2]-0.06, xy[2,2]-0.01, Plots.text(2, 11))
     annotate!(plt, xy[1,3]-0.05, xy[2,3]-0.05, Plots.text(3, 11))
@@ -84,6 +82,7 @@ function plot_subfig(subfig, rad)
              xy[2,:], 
             #  series_annotations=text.(1:n, :bottom, 9),
              color=1,
+             markerstrokewidth=0,
              subplot=subfig)
 end
 
@@ -94,8 +93,8 @@ plot_subfig(4, 0.4)
 
 display(plt)
 
-# savefig(plt, "data/output/figures/final/fig1.pdf")
-savefig(plt, "data/output/figures/poster/fig1.svg")
+savefig(plt, "data/output/figures/final/fig1.pdf")
+# savefig(plt, "data/output/figures/poster/fig1.svg")
 
 
 

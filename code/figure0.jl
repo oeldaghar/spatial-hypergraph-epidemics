@@ -145,4 +145,5 @@ plot_points(plt3)
 plt = plot(plt1,plt2,plt3,layout=(1,3),size=(600,200))
 plot!(plt,margins = -1Measures.mm)
 
-savefig(plt, "data/output/figures/poster/fig0.svg")
+savefig(plt, "data/output/figures/final/fig0.pdf")
+# savefig(plt, "data/output/figures/poster/fig0.svg")

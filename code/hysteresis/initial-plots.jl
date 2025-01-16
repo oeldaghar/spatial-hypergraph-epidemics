@@ -47,7 +47,7 @@ function plot_hysteresis(data_dir, fname)
     data = JSON.parsefile(joinpath(data_dir, fname))
     data["beta"] = Float64.(data["beta"])
     data["hyper_beta_func"] = String.(data["hyper_beta_func"])
-    data["infections"] = hcat(Vector{Int}.(data["infections"])...)
+    data["infections"] = hcat(Vector{Int}.(data["infections"])...)'
 
     # group data by starting condition, beta, and hyper_beta_func
     filtered_data = hcat(data["beta"], data["hyper_beta_func"], data["infections"])
@@ -70,7 +70,7 @@ function plot_hysteresis(data_dir, fname)
 
         f = scatter(xs, ys, leg = false,
                 xticks = ([1e-3,1e-2,1e-1,1e0], ["1e-3","1e-2","1e-1","1e0"]),
-                xlabel = "Pairwise Infection Probability", 
+                xlabel = "Pairwise Infection Probabilihcatty", 
                 ylabel = "Binned Average\nRolling Infections", 
                 title = "Beta vs Rolling Infections - $title_suffix\n$fname",
                 markerstrokewidth = 0,
