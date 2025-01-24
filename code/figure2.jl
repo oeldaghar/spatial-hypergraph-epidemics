@@ -46,7 +46,7 @@ function plot_subfig(subfig, deg)
     maxdist = maximum(dists)
     pts = @view xy[:,idxs]
     rad = maxdist/sqrt(deg)
-    clusters = dbscan(pts, rad)
+    clusters = dbscan(pts, rad).clusters
     edges = Vector{Int}[]
     for c in clusters
         e = [i]

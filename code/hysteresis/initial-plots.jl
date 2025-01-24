@@ -4,25 +4,19 @@ using Plots
 using Measures
 using StatsBase
 using JSON 
+using JSON3
+using ProgressMeter
 
 data_dir = "data/hysteresis/sirs/"
 figure_path = "data/hysteresis/figures"
 if !ispath(figure_path)
     mkpath(figure_path)
 end
-# gname = "spatial-hypergraph-5000-2"
-# fnames = filter(x->occursin(gname,x),readdir(data_dir))
-
-# alphas = map(x->parse(Float64,split(x,"-")[5]),fnames)
-# perm = sortperm(alphas)
-# alphas = alphas[perm]
-# fnames = fnames[perm]
-
 
 original_graph_names = [
-            ["spatial-hypergraph-5000-2-0.0-1-counter_1.json",
-                "spatial-hypergraph-5000-2-1.0-1-counter_1.json",
-                "spatial-hypergraph-5000-2-2.0-1-counter_1.json"],
+            ["spatial-hypergraph-5000-5-0.0-1_results.jsonl",
+                "spatial-hypergraph-5000-5-1.0-1_results.jsonl",
+                "spatial-hypergraph-5000-5-2.0-1_results.jsonl"],
             #50k node graphs 
             ["spatial-hypergraph-50000-2-0.0-1.json",
                 "spatial-hypergraph-50000-2-1.0-1.json",
@@ -44,19 +38,52 @@ function group_by_function(f, itr)
     return result
 end
 
-function load_epidemic_data(data_dir,fname)
-    fpath = joinpath(data_dir, fname)
-    println("READING DATA...$fpath")
-    data = JSON.parsefile(fpath)
-    println("EXTRACTING INFO AND CONVERTING TYPES...$fpath")
-    data = Dict{String, Array}(data)
-    data["ntransmissions_hyperedge"] = Vector{Vector{Dict{String,Int}}}(data["ntransmissions_hyperedge"])
-    data["ninfected_hyperedge"] = Vector{Vector{Dict{String,Int}}}(data["ninfected_hyperedge"])
-    data["beta"] = Float64.(data["beta"])
-    data["hyper_beta_func"] = String.(data["hyper_beta_func"])
-    data["infections"] = hcat(Vector{Int}.(data["infections"])...)'
-    return data
+function load_epidemic_data(data_dir,fname;excluded=[])
+    excluded = Set(excluded)
+    #initialize result 
+    data = Dict{String,Array}()
+    data["beta"] = Vector{Float64}()
+    data["gamma"] = Vector{Float64}()
+    data["delta"] = Vector{Float64}()
+    data["exo"] = Vector{Float64}()
+    data["tmax"] = Vector{Int}()
+    data["hyper_beta_func"] = Vector{String}()
+    data["initial_num_infected_nodes"] = Vector{Int}()
+    data["infections"] = Vector{Vector{Float64}}()
+    data["ninfected_hyperedge"] = Vector{Vector{Dict}}()
+    data["ntransmissions_hyperedge"] = Vector{Vector{Dict}}()
+    
+    fpath = joinpath(data_dir,fname)
+    println("LOADING $fname FROM $data_dir")
+    open(fpath, "r") do file
+        for (linecount,line) in enumerate(eachline(file))
+            if linecount%100==0
+                println("LOADED INFO FOR $linecount EPIDEMICS")
+            end
+            obj = JSON3.read(line)
+            for k in keys(obj)
+                key = string(k)
+                if !(key in excluded)
+                    push!(data[key],obj[key])
+                end
+            end
+        end
+    end
+    # post processing
+    data["infections"] = reduce(hcat,data["infections"])'
+    return data 
 end
+# TODO - test the load epidemic data function with the hypergraph stats on 50k node graph 
+# if not, add a parameter to truncate the time steps as we load in the data. worse case scenario, 
+# stream the computations 
+
+# data_dir = "data/hysteresis/sirs/"
+# fname = "spatial-hypergraph-5000-5-2.0-1_results.jsonl"
+# fpath = joinpath(data_dir,fname)
+# ispath(fpath)
+# data = load_epidemic_data(data_dir,fname,excluded=["ntransmissions_hyperedge","ninfected_hyperedge"])
+# data["ntransmissions_hyperedge"] #should return empty 
+
 # plot 1: can we see hysteresis as we vary beta for a single graph 
 # plot binned rolling average by starting condition vs beta as scatter plot
 # if there is no bistability (not in that parameter regime), then
@@ -66,16 +93,7 @@ end
 
 # Example usage
 function plot_hysteresis(data_dir, fname)
-    # alpha_val = Float64(split(fname,"-")[5])
-    data = load_epidemic_data(data_dir,fname)
-    # fpath = joinpath(data_dir, fname)
-    # println("READING DATA...$fpath")
-    # data = JSON.parsefile(fpath)
-    # println("EXTRACTING INFO AND CONVERTING TYPES...$fpath")
-    # data = Dict{String, Array}(key => data[key] for key in ["beta", "hyper_beta_func", "infections"])
-    # data["beta"] = Float64.(data["beta"])
-    # data["hyper_beta_func"] = String.(data["hyper_beta_func"])
-    # data["infections"] = hcat(Vector{Int}.(data["infections"])...)'
+    data = load_epidemic_data(data_dir,fname,excluded = ["ntransmissions_hyperedge","ninfected_hyperedge"])
 
     # group data by starting condition, beta, and hyper_beta_func
     filtered_data = hcat(data["beta"], data["hyper_beta_func"], data["infections"])
@@ -91,7 +109,7 @@ function plot_hysteresis(data_dir, fname)
     beta_map = Dict(map(x -> (x[2], x[1]), enumerate(sort(beta_vals))))
 
     # beta_map[beta_val] = x_ind
-    function plot_keys(keys, title_suffix)
+    function _plot_keys(keys, title_suffix)
         # xs = [beta_map[x[1]] for x in keys]
         xs = [x[1] for x in keys]
         ys = [grouped_rolling_averages[x] for x in keys]
@@ -106,7 +124,7 @@ function plot_hysteresis(data_dir, fname)
         plot!(f,xscale=:log10)
     end
 
-    return plot_keys(linear_keys, "Linear"),plot_keys(sqrt_keys, "Sqrt")
+    return _plot_keys(linear_keys, "Linear"),_plot_keys(sqrt_keys, "Sqrt")
 end
 
 ################################
@@ -114,67 +132,61 @@ end
 ################################
 # Example usage
 # data_dir = "data/hysteresis/sirs/"
-# fname = "spatial-hypergraph-5000-2-0.0-1.json"
+# fname = "spatial-hypergraph-5000-5-0.0-1_results.jsonl"
 # f1,f2 = plot_hysteresis(data_dir, fname)
 # f1
+# f2
 
-fs = []
-for fname in [
-            "spatial-hypergraph-5000-2-0.0-1-counter_1.json",
-            "spatial-hypergraph-5000-2-1.0-1-counter_1.json",
-            "spatial-hypergraph-5000-2-2.0-1-counter_1.json"
-        ]
-    println("WORKING ON $fname")
-    f1,f2 = plot_hysteresis(data_dir, fname)
-    ylims!(f1,(-50,3000))
-    ylims!(f2,(-50,3000))
-    push!(fs,f1)
-    push!(fs,f2)
-end
+### 
+# fs = []
+# for fname in [
+#             "spatial-hypergraph-5000-2-0.0-1-counter_1.json",
+#             "spatial-hypergraph-5000-2-1.0-1-counter_1.json",
+#             "spatial-hypergraph-5000-2-2.0-1-counter_1.json"
+#         ]
+#     println("WORKING ON $fname")
+#     f1,f2 = plot_hysteresis(data_dir, fname)
+#     ylims!(f1,(-50,3000))
+#     ylims!(f2,(-50,3000))
+#     push!(fs,f1)
+#     push!(fs,f2)
+# end
 
-# side by side plot as we vary alpha across columns
-f_main = plot(fs[1], fs[3], fs[5], fs[2], fs[4], fs[6],
-              layout=(2, 3),
-              size=(1000, 600),
-              left_margin=5mm, right_margin=2mm, top_margin=2mm, bottom_margin=5mm,
-              title=["alpha=0" "alpha=1" "alpha=2" "alpha=0" "alpha=1" "alpha=2"],
-              titlefontsize=12,
-              plot_title="Linear Normalization",
-              plot_titlefontsize=18)
-# remove xlabel, xtick labels, and adjust spacing for first row 
-for i=1:3
-    plot!(f_main[i], xticks=(xticks(f_main[i])[1], ""),
-        xlabel="",
-        bottom_margin=8mm,
-        top_margin=8mm)
-end
-# remove ylabel for 2nd column and beyond
-for i=1:6
-    if i%3!=1
-        plot!(f_main[i], yticks=(yticks(f_main[i])[1], ""),
-            ylabel="",
-            left_margin=3mm)
-    end
-end
-# Add row titles using annotation
-plot!(f_main, annotation=(5e-2, 3800, text("Square Root Normalization", 18, :center)),
-                subplot=5)
-# save figure 
-savefig(f_main, joinpath(figure_path,"hysteresis_plot_v1.pdf"))
-plot!(f_main,dpi=1000)
-savefig(f_main, joinpath(figure_path,"hysteresis_plot_v1.png"))
+# # side by side plot as we vary alpha across columns
+# f_main = plot(fs[1], fs[3], fs[5], fs[2], fs[4], fs[6],
+#               layout=(2, 3),
+#               size=(1000, 600),
+#               left_margin=5mm, right_margin=2mm, top_margin=2mm, bottom_margin=5mm,
+#               title=["alpha=0" "alpha=1" "alpha=2" "alpha=0" "alpha=1" "alpha=2"],
+#               titlefontsize=12,
+#               plot_title="Linear Normalization",
+#               plot_titlefontsize=18)
+# # remove xlabel, xtick labels, and adjust spacing for first row 
+# for i=1:3
+#     plot!(f_main[i], xticks=(xticks(f_main[i])[1], ""),
+#         xlabel="",
+#         bottom_margin=8mm,
+#         top_margin=8mm)
+# end
+# # remove ylabel for 2nd column and beyond
+# for i=1:6
+#     if i%3!=1
+#         plot!(f_main[i], yticks=(yticks(f_main[i])[1], ""),
+#             ylabel="",
+#             left_margin=3mm)
+#     end
+# end
+# # Add row titles using annotation
+# plot!(f_main, annotation=(5e-2, 3800, text("Square Root Normalization", 18, :center)),
+#                 subplot=5)
+# # save figure 
+# savefig(f_main, joinpath(figure_path,"hysteresis_plot_v1.pdf"))
+# plot!(f_main,dpi=1000)
+# savefig(f_main, joinpath(figure_path,"hysteresis_plot_v1.png"))
 
 #zooming in on one piece 
 function stochastic_evolution(data_dir,fname)
-    load_epidemic_data(data_dir,fname)
-    # fpath = joinpath(data_dir, fname)
-    # println("READING DATA...$fpath")
-    # data = JSON.parsefile(fpath)
-    # println("EXTRACTING INFO AND CONVERTING TYPES...$fpath")
-    # data = Dict{String, Array}(key => data[key] for key in ["beta", "hyper_beta_func", "infections"])
-    # data["beta"] = Float64.(data["beta"])
-    # data["hyper_beta_func"] = String.(data["hyper_beta_func"])
-    # data["infections"] = hcat(Vector{Int}.(data["infections"])...)'
+    data = load_epidemic_data(data_dir,fname,excluded=["ntransmissions_hyperedge","ninfected_hyperedge"])
 
     # group data by starting condition, beta, and hyper_beta_func
     filtered_data = hcat(data["beta"], data["hyper_beta_func"], data["infections"])
@@ -188,7 +200,7 @@ function stochastic_evolution(data_dir,fname)
     beta_vals = unique(first.(linear_keys))
     beta_map = Dict(map(x -> (x[2], x[1]), enumerate(sort(beta_vals))))
 
-    beta = 1e-2
+    beta = 9e-3
     # pick a value of beta and do a plot for each normalization
     inds = (first.(static_keys).==beta) .& ([x[2]=="linear" for x in static_keys])
 
@@ -202,38 +214,41 @@ function stochastic_evolution(data_dir,fname)
     plot!(f,
         xlabel="Time Step",
         ylabel="Total Infections",
-        title = "alpha=$alpha_val, beta = $beta\$fname")
+        title = "alpha=$alpha_val, beta = $beta\n$fname")
     return f 
 end
 
-filtered_fnames = [
-            "spatial-hypergraph-5000-2-0.0-1-counter_1.json",
-            "spatial-hypergraph-5000-2-1.0-1-counter_1.json",
-            "spatial-hypergraph-5000-2-2.0-1-counter_1.json"
-        ]
-fs = []
-for fname in filtered_fnames
-    f = stochastic_evolution(data_dir,fname)
-    ylims!(f,(0,5000))
-    push!(fs,f)
-end
+# f1 = stochastic_evolution(data_dir,fname)
 
-#put them together 
-main_f = plot(fs...,layout=(3,1),
-        size = (250,650),
-        # margins=8mm,
-        left_margin = 7mm,
-        titlefontsize=11)
-savefig(main_f, joinpath(figure_path,"hysteresis_stochastic_plot_v1.pdf"))
-plot!(main_f,dpi=1000)
-savefig(main_f, joinpath(figure_path,"hysteresis_stochastic_plot_v1.png"))
+
+# filtered_fnames = [
+#             "spatial-hypergraph-5000-2-0.0-1-counter_1.json",
+#             "spatial-hypergraph-5000-2-1.0-1-counter_1.json",
+#             "spatial-hypergraph-5000-2-2.0-1-counter_1.json"
+#         ]
+# fs = []
+# for fname in filtered_fnames
+#     f = stochastic_evolution(data_dir,fname)
+#     ylims!(f,(0,5000))
+#     push!(fs,f)
+# end
+
+# #put them together 
+# main_f = plot(fs...,layout=(3,1),
+#         size = (250,650),
+#         # margins=8mm,
+#         left_margin = 7mm,
+#         titlefontsize=11)
+# savefig(main_f, joinpath(figure_path,"hysteresis_stochastic_plot_v1.pdf"))
+# plot!(main_f,dpi=1000)
+# savefig(main_f, joinpath(figure_path,"hysteresis_stochastic_plot_v1.png"))
         
 #############################
 ## PLOTS for hypergraph stats 
 #############################
 # average over dicts 
-function average_over_dicts(vec_of_dicts::Vector{Dict{S,T}}) where {S,T}
-    mydict = Dict{S,Float64}()
+function average_over_dicts(vec_of_dicts::Vector{Dict})
+    mydict = Dict{Any,Float64}()
     for dict in vec_of_dicts
         for key in keys(dict)
             mydict[key] = get(mydict,key,0)+dict[key]
@@ -246,9 +261,9 @@ function average_over_dicts(vec_of_dicts::Vector{Dict{S,T}}) where {S,T}
     return mydict
 end
 
-function dictionary_rolling_average(vec_of_dicts::Vector{Dict{S,T}}, window::Int) where {S,T}
+function dictionary_rolling_average(vec_of_dicts::Vector{Dict}, window::Int)
     # build a dict to track sum prior to average 
-    rolling_avgs = Dict{S,Float64}()
+    rolling_avgs = Dict{Any, Float64}()
     for dict in vec_of_dicts[end-window:end]
         for (key,val) in pairs(dict)
             rolling_avgs[key] = get(rolling_avgs,key,0)+val
@@ -279,7 +294,7 @@ function rolling_hyperedge_stats(data,hyperedge_key="ntransmissions_hyperedge")
     static_keys = collect(keys(newdata))
     linear_keys = [key for key in static_keys if key[2]=="linear"]
     sqrt_keys = [key for key in static_keys if key[2]=="sqrt"]
-    hyperedge_keys = keys(newdata[first(keys(newdata))])
+    hyperedge_keys = string.(keys(newdata[first(keys(newdata))]))
     ymin,ymax = extrema(parse.(Int,hyperedge_keys))
     
     beta_vals = sort(unique(data["beta"]))
@@ -291,7 +306,7 @@ function rolling_hyperedge_stats(data,hyperedge_key="ntransmissions_hyperedge")
         for (i,beta) in enumerate(beta_vals)
             dict = newdata[(beta,hyper_beta_func)] # filter to linear 
             for key in keys(dict)
-                plotting_data[parse(Int,key),i] = dict[key]
+                plotting_data[parse(Int,string(key)),i] = dict[key]
             end
         end
 
@@ -320,7 +335,6 @@ function hypergraph_stats_fig(data_dir,fname)
     end
     return pdata
 end
-
 
 start_time = time()
 pdata = Dict()
@@ -513,3 +527,10 @@ title!(f,fname)
 plot!(f,dpi=1000)
 savefig(f,joinpath(figure_path,"rolling_hyperedge_transmissions-$(splitext(fname)[1]).png"))
 savefig(f,joinpath(figure_path,"rolling_hyperedge_transmissions-$(splitext(fname)[1]).pdf"))
+
+fname = "spatial-hypergraph-5000-5-0.0-1_results.jsonl"
+data_dir = "data/hysteresis/sirs/"
+data = load_epidemic_data(data_dir,fname)
+
+fname
+data

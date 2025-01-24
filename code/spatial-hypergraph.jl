@@ -16,7 +16,7 @@ function hypergraph_edges(X;degreedist=LogNormal(log(3),1),radfunc=(dist,deg) ->
       # if !(rad ≈ maxdist)
       #   println("rad: ", rad, " maxdist: ", maxdist)
       # end
-      clusters = dbscan(pts, rad)
+      clusters = dbscan(pts, rad).clusters
       for c in clusters
         e = [i]
         for v in c.core_indices
@@ -56,7 +56,7 @@ function hypergraph_edges(X;degs::Vector{S}=rand(LogNormal(log(3),1),lastindex(X
       # if !(rad ≈ maxdist)
       #   println("rad: ", rad, " maxdist: ", maxdist)
       # end
-      clusters = dbscan(pts, rad)
+      clusters = dbscan(pts, rad).clusters
       for c in clusters
         e = [i]
         for v in c.core_indices

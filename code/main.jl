@@ -1,9 +1,10 @@
 ### GENERATE INPUT DATA
 include("data-generation.jl")
 #generate two sets of hypergraphs on 5k and 50k nodes
-generate_data(5000,2,15)
+# generate_data(5000,2,15)
 generate_data(5000,5,15)
-generate_data(50000,2,15)
+# generate_data(50000,2,15)
+generate_data(50000,5,15)
 
 ### GENERATE SIRS DATA 
 #can add workers here or from the command line when initiating the environment.
