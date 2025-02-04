@@ -61,17 +61,18 @@ end
 
 gnames = [
         #smaller graphs         
-        # "spatial-hypergraph-5000-2", 
-        # "spatial-hypergraph-5000-5", # done but diff file names 
+        "spatial-hypergraph-5000-2", 
+        "spatial-hypergraph-5000-5", # done but diff file names 
         #larger graphs 
         "spatial-hypergraph-50000-2", 
-        # "spatial-hypergraph-50000-5",
+        "spatial-hypergraph-50000-5",
 ]
 
 summary_info = []
 # GRAPH LOOP
 for gname in gnames 
     fnames = filter!(x->endswith(x,".txt"), get_fnames(gname))
+    fnames = filter(x->occursin("newalpha",x),fnames)
     nnodes = parse(Int,split(fnames[1],'-')[3])
 
     # random seed for choosing initial infected nodes
@@ -105,6 +106,7 @@ for gname in gnames
         parallel_time += delta_parallel_time
         println("GRAPH $i ELAPSED TIME USING $(nworkers()) WORKERS: $(delta_parallel_time) seconds")
 
+        # TODO test writing this to another format like Parquet 
         dst_fname = "$(splitext(basename(fname))[1]).jsonl"    
         jsonl_file = joinpath(DATA_PATH, dst_fname)
         println("SAVING RESULTS TO FILE: $jsonl_file")
