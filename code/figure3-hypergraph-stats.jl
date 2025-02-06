@@ -14,11 +14,11 @@ using Measures
     
     nodes = Vector{Int}()
     edges = Vector{Int}()
-    for (col,h) in enumerate(hedges)
+    for (row,h) in enumerate(hedges)
         append!(nodes,h)
-        append!(edges,col*ones(lastindex(h)))
+        append!(edges,row*ones(lastindex(h)))
     end
-    return sparse(nodes,edges,ones(lastindex(nodes)),n,lastindex(hedges))
+    return sparse(edges,nodes,ones(lastindex(nodes)),lastindex(hedges),n)
 end
 
 @everywhere function pairwise_proj(hedges)
@@ -81,42 +81,35 @@ end
 @everywhere function get_func(alpha) 
     if alpha <= 1
         return (d,deg,dim) -> (alpha^(1/dim)*d)/(deg)^(1/(2*dim))
-        # return (d,deg,dim) -> alpha*d/(deg)^(1/(2))
     else
         return (d,deg,dim) -> d/(deg)^(1/(2*dim)) + (alpha-1)*(d-d/(deg)^(1/(2*dim)))
-        # return (d,deg,dim) -> d/(deg)^(1/(2)) + (alpha-1)*(d-d/(deg)^(1/(2)))
     end
 end 
 
-Random.seed!(1234)
-
-@everywhere d = 2
-@everywhere n = 50000
-@everywhere alphas = range(0,2,length=25)
-##### plot heatmap about hyperedge size distribution
-
-X = rand(d,n)
-@everywhere X = $X
-
-deg_list = zeros(Int, n)
-degreedist = LogNormal(log(3),1)
-for i = 1:n
-    deg_list[i] = min(ceil(Int,rand(degreedist)),n-1)
-end
-
-graphs = pmap(alpha -> hypergraph_edges(X, deg_list;radfunc=get_func(alpha)), alphas)
-
-max_edge_size = mapreduce(e -> length(e), max, Iterators.flatten(graphs), init=2)
-
-edge_cnt = zeros(Int, max_edge_size, 25)
-for i = 1:25
-    for e in graphs[i]
-        edge_cnt[length(e), i] += 1
+@everywhere function get_edge_counts(n,d,alphas)
+    # Random.seed!(1234)
+    X = rand(d,n)
+    
+    deg_list = zeros(Int, n)
+    degreedist = LogNormal(log(3),1)
+    for i = 1:n
+        deg_list[i] = min(ceil(Int,rand(degreedist)),n-1)
     end
+    
+    graphs = pmap(alpha -> hypergraph_edges(X, deg_list;radfunc=get_func(alpha)), alphas)
+    
+    max_edge_size = mapreduce(e -> length(e), max, Iterators.flatten(graphs), init=2)
+    
+    edge_cnt = zeros(Int, max_edge_size, lastindex(alphas))
+    for i = 1:lastindex(alphas)
+        for e in graphs[i]
+            edge_cnt[length(e), i] += 1
+        end
+    end
+    
+    edge_cnt_normalized = edge_cnt ./ sum(edge_cnt, dims=1)
+    return edge_cnt_normalized
 end
-
-edge_cnt_normalized = edge_cnt ./ sum(edge_cnt, dims=1)
-### plot number of hyperedges vs alpha
 
 @everywhere function get_global_cc(hedges)
     g = SimpleGraph(pairwise_proj(hedges))
@@ -130,7 +123,7 @@ end
     return sumdegs
 end
 
-@everywhere function run_trial()
+@everywhere function run_trial(n,d,alphas)
     X = rand(d,n)
 
     deg_list = zeros(Int, n)
@@ -147,71 +140,136 @@ end
     return nedges,ntris,projected_degs
 end
 
-trials = @showprogress map(x->run_trial(), 1:10)  
+function get_row_plotting_data(n=10000,d=2,alphas=range(0,2,25),ntrials=10)
+    edge_cnt_normalized = get_edge_counts(n,d,range(0,2,25))
 
-nedges = reduce(hcat, first.(trials)) # now we have alpha as row index and trial as column index
-ntris = reduce(hcat, map(x->x[2],trials))
-projected_degs = reduce(hcat, map(x->x[3],trials))
+    trials = @showprogress map(x->run_trial(n,d,alphas), 1:ntrials)  
 
-# I want to take the quantiles over the columns... 
-quantiles = [0.1,0.25,0.5,0.75,0.9]
-linewidths = [0.5, 1, 2, 1, 0.5]
-colors = [:lightgrey, :grey, :black, :grey, :lightgrey]
+    nedges = reduce(hcat, first.(trials)) # now we have alpha as row index and trial as column index
+    ntris = reduce(hcat, map(x->x[2],trials))
+    projected_degs = reduce(hcat, map(x->x[3],trials))
+    return [edge_cnt_normalized, nedges, ntris]
+end 
 
-## PLOT 3 - alpha = 2 
-l = @layout [Plots.grid(1, 3, widths=[0.42, 0.29, 0.29])]
+function make_fig(data)
+    # alphas = range(0,2,15)
+    # n = 5000
+    # println("Simulating data...")
+    # row1 = get_row_plotting_data(n,2,alphas)
+    # row2 = get_row_plotting_data(n,5,alphas)
+    # row3 = get_row_plotting_data(n,10,alphas)
+    # data = [row1,row2,row3]
 
-plt = Plots.plot(layout=l, margin=6*Plots.mm)
-Plots.plot!(plt, size=(1200,300))
+    # handle heatmaps
+    # make same size 
+    max_hyperedge_size = maximum(map(x->size(x[1],1),data))
+    for row in data
+        heatmap_data = row[1]
+        rows_to_pad = max_hyperedge_size-size(heatmap_data,1)
+        row[1] = vcat(heatmap_data,zeros(rows_to_pad,size(heatmap_data,2)))
+    end
 
-Plots.heatmap!(plt, log10.(edge_cnt_normalized), 
-        xlabel=L"\alpha",
-        ylabel="Hyperedge size",
-        xticks=([1,7,13,19,25], [0.0, 0.5, 1.0, 1.5, 2.0]),
-        yscale=:log10,
-        color=:viridis,
-        framestyle=:box,
-        thickness_scaling=1.1,
-        guidefontsize=14,
-        tickfontsize=12,
-        subplot=1)
+    # make individual figures 
+    # heatmaps 
+    col1_figs = []
+    for pdata in first.(data)
+        f = Plots.heatmap(log10.(pdata), 
+                xlabel=L"\alpha",
+                ylabel="Hyperedge size",
+                xticks=([1,7,13,19,25], [0.0, 0.5, 1.0, 1.5, 2.0]),
+                yscale=:log10,
+                color=:viridis,
+                clims=(-5.0,0),
+                framestyle=:box,
+                thickness_scaling=1.2,
+                guidefontsize=14,
+                tickfontsize=12)
+        push!(col1_figs,f)
+    end
 
-Plots.plot!(plt, xlabel=L"\alpha", ylabel="Total hyperedges", 
-            framestyle=:box,
-            thickness_scaling=1.1,
-            guidefontsize=14,
-            tickfontsize=12,
-            tickdirection=:out,
-            subplot=2)
-for (q, lw, c) in zip(quantiles, linewidths, colors)
-    nedges_q = quantile.(eachrow(nedges), q)
-    Plots.plot!(plt, alphas, nedges_q, label="", linewidth=lw, color=c, subplot=2,    
-        yscale=:log10)
+    col1_figs[3]
+
+    # col2 and col3 
+    quantiles = [0.1,0.25,0.5,0.75,0.9]
+    linewidths = [0.5, 1, 2, 1, 0.5]
+    colors = [:lightgrey, :grey, :black, :grey, :lightgrey]
+
+    # total edges 
+    col2_figs = []
+    for pdata in map(x->x[2],data)
+        f = Plots.plot(xlabel=L"\alpha", ylabel="Total hyperedges", 
+                    framestyle=:box,
+                    thickness_scaling=1.2,
+                    guidefontsize=14,
+                    tickfontsize=12,
+                    tickdirection=:out)
+        for (q, lw, c) in zip(quantiles, linewidths, colors)
+            nedges_q = quantile.(eachrow(pdata), q)
+            Plots.plot!(f, alphas, nedges_q, label="", linewidth=lw, color=c,    
+                yscale=:log10)
+        end
+        push!(col2_figs,f)
+    end
+    # align ylims 
+    col_ylims = Plots.ylims(Plots.plot(col2_figs...,layout=(3,1),link=:all))
+    for f in col2_figs
+        Plots.plot!(f,ylims=col_ylims)
+    end
+
+    col3_figs = []
+    for pdata in map(x->x[3],data)
+        f = Plots.plot(xlabel=L"\alpha", ylabel="Total Triangles", 
+                    framestyle=:box,
+                    thickness_scaling=1.2,
+                    guidefontsize=14,
+                    tickfontsize=12,
+                    tickdirection=:out)
+        for (q, lw, c) in zip(quantiles, linewidths, colors)
+            ntris_q = quantile.(eachrow(pdata), q)
+            Plots.plot!(f, alphas, ntris_q, label="", linewidth=lw, color=c,    
+                yscale=:log10)
+        end
+        push!(col3_figs,f)
+    end
+    # align ylims 
+    col_ylims = Plots.ylims(Plots.plot(col3_figs...,layout=(3,1),link=:all))
+    for f in col3_figs
+        Plots.plot!(f,ylims=col_ylims)
+    end
+
+
+    # put them all together 
+    figs =[]
+    for tup in zip(col1_figs,col2_figs,col3_figs)
+        push!(figs,tup[1])
+        push!(figs,tup[2])
+        push!(figs,tup[3])
+    end
+
+    l = @layout [Plots.grid(3, 3, widths=[0.42, 0.29, 0.29])]
+    plt = Plots.plot(figs...,layout=l, 
+                margin=0*Plots.mm, size=(1200,1100))
+    Plots.plot!(plt,top_margin = 10mm,bottom_margin=-2mm)
+    Plots.plot!(plt[2],title="n=$n  d=2",titlefontsize = 24,
+                    top_margin=-3Measures.mm)
+    Plots.plot!(plt[5],title="n=$n  d=5",titlefontsize = 24,
+                    top_margin=-3Measures.mm)
+    Plots.plot!(plt[8],title="n=$n  d=10",titlefontsize = 24,
+                    top_margin=-3Measures.mm)
+    return plt 
 end
 
-Plots.plot!(plt, xlabel=L"\alpha", ylabel="Projected Volume", 
-            framestyle=:box,
-            thickness_scaling=1.1,
-            guidefontsize=14,
-            tickfontsize=12,
-            tickdirection=:out,
-            subplot=3)
-for (q, lw, c) in zip(quantiles, linewidths, colors)
-    projected_degs_q = quantile.(eachrow(projected_degs), q)
-    Plots.plot!(plt, alphas, projected_degs_q, label="", linewidth=lw, color=c, subplot=3)
-end
+alphas = range(0,2,15)
+n = 1000
+println("Simulating data...")
+row1 = get_row_plotting_data(n,2,alphas)
+row2 = get_row_plotting_data(n,5,alphas)
+row3 = get_row_plotting_data(n,10,alphas)
+data = [row1,row2,row3]
 
-#touch up margins
-Plots.plot!(plt[2],
-                left_margin=-3Measures.mm,
-                right_margin=0mm,
-                bottom_margin=8mm,
-                )
-Plots.plot!(plt[3],right_margin=1mm,)
+plt = make_fig(data)
 
-Plots.plot!(plt,top_margin = 2mm)
-display(plt)
+Plots.savefig(plt,"data/output/figures/final/hypergraph-stats.pdf")
 
-plot!(plt,dpi=2000)
-savefig(plt, "data/output/figures/final/hyperedge-stats-$n-$d-newalpha.pdf")
-savefig(plt, "data/output/figures/final/hyperedge-stats-$n-$d-newalpha.png")
+Plots.plot!(plt,dpi=1000)
+Plots.savefig(plt,"data/output/figures/final/hypergraph-stats.png")

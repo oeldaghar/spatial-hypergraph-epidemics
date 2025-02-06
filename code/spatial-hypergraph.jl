@@ -83,6 +83,8 @@ function hypergraph_edges(X;degs::Vector{S}=rand(LogNormal(log(3),1),lastindex(X
   return edges, X
 end
 
+# hypergraph_edges(X, deg_list::Vector{S}; radfunc) where S = hypergraph_edges(X, degs=deg_list, radfunc=radfunc)
+
 function spatial_hypergraph_edges(n::Integer,d::Integer;kwargs...)
   X = rand(d,n)
   return hypergraph_edges(X;kwargs...)
@@ -106,30 +108,30 @@ end
 # hypergraph_edges(X;radfunc=get_func(alphas[1]))
 
 ##
-using CairoMakie
-function graphlines_spatial_hypergraph(hedges, xy::AbstractMatrix{T};kwargs...) where T
-  #px,py = zeros(T,0),zeros(T,0)
-  #P = [px,py]
-  #skip = NaN.*xy[:,begin] # first col
-  segs = Tuple{Point2f,Point2f}[] 
-  meanpts = Point2f[] 
-  for e in hedges
-    if length(e) == 2
-      #push!.(P, @view xy[:,e[1]])
-      #push!.(P, @view xy[:,e[2]])
-      #push!.(P, skip)
-      push!(segs, (Point2f(xy[:,e[1]]), Point2f(xy[:,e[2]])))
-    else
-      # find the centroid... 
-      hsize = length(e) 
-      mx = sum( i->xy[1, i]/hsize , e)
-      my = sum( i->xy[2, i]/hsize , e)
-      mp = Point2f(mx,my) 
-      push!(meanpts, mp)
-      for v in e
-        push!(segs, (mp, Point2f(xy[:,v])))
-      end 
-    end
-  end 
-  return segs, meanpts
-end
+# using CairoMakie
+# function graphlines_spatial_hypergraph(hedges, xy::AbstractMatrix{T};kwargs...) where T
+#   #px,py = zeros(T,0),zeros(T,0)
+#   #P = [px,py]
+#   #skip = NaN.*xy[:,begin] # first col
+#   segs = Tuple{Point2f,Point2f}[] 
+#   meanpts = Point2f[] 
+#   for e in hedges
+#     if length(e) == 2
+#       #push!.(P, @view xy[:,e[1]])
+#       #push!.(P, @view xy[:,e[2]])
+#       #push!.(P, skip)
+#       push!(segs, (Point2f(xy[:,e[1]]), Point2f(xy[:,e[2]])))
+#     else
+#       # find the centroid... 
+#       hsize = length(e) 
+#       mx = sum( i->xy[1, i]/hsize , e)
+#       my = sum( i->xy[2, i]/hsize , e)
+#       mp = Point2f(mx,my) 
+#       push!(meanpts, mp)
+#       for v in e
+#         push!(segs, (mp, Point2f(xy[:,v])))
+#       end 
+#     end
+#   end 
+#   return segs, meanpts
+# end
