@@ -2,15 +2,18 @@
 include("data-generation.jl")
 #generate two sets of hypergraphs on 5k and 50k nodes
 generate_data(5000,2,15)
+generate_data(5000,5,15)
 generate_data(50000,2,15)
+generate_data(50000,5,15)
 
 ### GENERATE SIRS DATA 
 #can add workers here or from the command line when initiating the environment.
 # addprocs(25)
-include("parallel-epidemics.jl")
+# include("parallel-epidemics.jl")
+# include("hysteresis/epidemic-experiments.jl")
 
 ### PROJECTED GRAPH DEGREES
-include("degree-projection.jl")
+# include("degree-projection.jl")
 
 #build figures
 # include("figure1.jl")

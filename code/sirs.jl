@@ -21,7 +21,7 @@ function _edge_list_to_neighbor_list(edges)
     end
     return neighbors
 end
-#replacing enum with smaller memory footprint based on profiling results.
+# replacing enum with smaller memory footprint based on profiling results.
 const StateSucceptible = Int8(1)
 const StateInfected = Int8(2)
 const StateRecovered = Int8(3)
@@ -75,7 +75,7 @@ function sirs(edges::Vector{T}, seednodes::Vector{Int}, beta=3e-2, gamma=5e-2, d
 end 
 sirs(edges, seednode::Int, beta=3e-2, gamma=5e-2, delta=5e-2, exo=5/100000, tmax=365*10) = sirs(edges, [seednode], beta, gamma, delta, exo, tmax)
 
-#hypergraph version 
+# hypergraph version 
 """
     _hyperedge_list_to_neighbor_list(hedges)
 
@@ -101,40 +101,39 @@ function _hyperedge_list_to_neighbor_list(hedges)
     end
     return hyper_neighbors
 end
-#TODO cache info on hyperedge stats (number of infected nodes)
-#try caching at beginning of iteration and do a lookup
+
+# struct to store ego_edge (hyper neighbors) and the weight (number infected nodes in hyperedge)
 mutable struct Neighbor
     ego_edge::Vector{Int}
     weight::Int
 end
-# function get_hyper_beta(beta,k,normalization=x->x) 
-#     hyper_beta = 1-(1-beta)^k 
-#     hyper_beta/=normalization(k)
-#     return 
-# end
+
 # hyper_beta_func options: "linear", "sqrt", or "squared"
-function _update_state_hyper!(weighted_neighlist::Vector{Vector{Neighbor}}, currstate::Vector{Int8}, newstate::Vector{Int8}, beta::Float64, gamma::Float64, delta::Float64, exo::Float64=5/100000,hyper_beta_func::String="linear")
+function _update_state_hyper!(
+                                weighted_neighlist::Vector{Vector{Neighbor}},
+                                currstate::Vector{Int8}, 
+                                newstate::Vector{Int8}, 
+                                beta::Float64, 
+                                gamma::Float64, 
+                                delta::Float64, 
+                                exo::Float64=5/100000,
+                                hyper_beta_func::String="linear",
+                                ninfected_hyperedge::Dict{Int,Int}=Dict{Int,Int}(),
+                                ntransmissions_hyperedge::Dict{Int,Int}=Dict{Int,Int}()
+                            )
     copy!(newstate, currstate) # copy the current state to the new state)
     @inbounds for i in eachindex(weighted_neighlist)
-        if rand() < exo # exogenous infection #5 per 100k cases per unit time
+        if rand() < exo # exogenous infections
             newstate[i] = StateInfected
             continue 
         end
         if currstate[i] == StateSucceptible
             #check hyper neighbors 
             for hyper_neighbor in weighted_neighlist[i] #hedge = [i,other nodes], then ego_edge = [other nodes]
-                #measure fraction of nodes infected 
-                # infected_ego_size = 0
-                # for j in i_ego_edge
-                #     if currstate[j] == StateInfected
-                #         infected_ego_size+=1
-                #     end
-                # end
                 i_ego_edge,infected_ego_size = hyper_neighbor.ego_edge,hyper_neighbor.weight
                 #define hyperedge contribution
-                # hyper_beta = f(|h|,|h ⋂ I|)... figure out later
+                # hyper_beta = f(|h|,|h ⋂ I|) .. depends on size of hyperedge and number of infected nodes 
                 if infected_ego_size>0
-                    # hyper_beta = beta #change later..
                     hyper_beta = 1-(1-beta)^infected_ego_size 
                     if hyper_beta_func=="linear"
                         hyper_beta/=lastindex(i_ego_edge)
@@ -145,11 +144,15 @@ function _update_state_hyper!(weighted_neighlist::Vector{Vector{Neighbor}}, curr
                     else
                         ArgumentError("hyper_beta_func should be one of 'linear', 'sqrt', or 'squared'"  )
                     end
-                    # hyper_beta/=lastindex(i_ego_edge)
-                    #alter this probability downwards a term like sqrt(|h|). something about air to room ratio and airflow. check details.
                     if rand() < hyper_beta
                         newstate[i] = StateInfected
-                        break # no need to check the other neighbors if one is infected
+
+                        # record size of hyperedge that passed infection 
+                        h_size = lastindex(i_ego_edge)+1
+                        old_val = get(ntransmissions_hyperedge,h_size,0)
+                        ntransmissions_hyperedge[h_size] = old_val+1
+                        # break # no need to check the other neighbors if one is infected
+                        # if we want to allow ties, we need to remove this 
                     end
                 end
             end
@@ -175,27 +178,32 @@ function _update_state_hyper!(weighted_neighlist::Vector{Vector{Neighbor}}, curr
             end
             #update weight
             hyper_neighbor.weight = s
+
+            # record number of infected nodes in binned infections 
+            h_size = lastindex(ego_edge)+1
+            old_val = get(ninfected_hyperedge,h_size,0)
+            ninfected_hyperedge[h_size] = old_val+s+newstate[node] # sum_v (inf neghbors of v + v==infected)
         end
     end
 end
+
 function sirs_hyper(hedges::Vector{Vector{Int}}, seednodes::Vector{Int}, beta::Float64=1e-2, gamma::Float64=5e-2, delta::Float64=1/365, exo::Float64=5/100000, tmax::Int=365*10,hyper_beta_func::String="linear")
+    # build adjacency list for hyper-neighbors 
     neighlist = _hyperedge_list_to_neighbor_list(hedges)
-    #modifying preallocation of weighted neighbors
+    # weighted neighbor list for number of infected nodes in each hyperedge 
     weighted_neighlist = Vector{Vector{Neighbor}}(undef, length(neighlist))
     for i in eachindex(neighlist)
         weighted_neighlist[i] = [Neighbor(y, 0) for y in neighlist[i]]
     end
-    # weighted_neighlist = map(x->([[y,0] for y in x]),neighlist)
-    # weighted_neighlist = Vector{Vector{Union{Vector{Int},Int}}}(weighted_neighlist)
-    
+
     n = length(neighlist)
-    
+    # initialize infected nodes
     state = Vector{Int8}(undef, n)
     fill!(state, StateSucceptible)
     for node in seednodes
         state[node] = StateInfected
     end
-    #update weights to be num of infected nodes in each hyper ego_edge
+    #update weights for infected nodes in each hyperedge 
     for node=1:lastindex(weighted_neighlist)
         for hyper_neighbor in weighted_neighlist[node]
             ego_edge = hyper_neighbor.ego_edge
@@ -209,18 +217,30 @@ function sirs_hyper(hedges::Vector{Vector{Int}}, seednodes::Vector{Int}, beta::F
             hyper_neighbor.weight = s
         end
     end
+
+    # initialize info 
     newstate = Vector{Int8}(undef, n)
-
     ninfected = zeros(Int, tmax)
-
-    @showprogress for t in 1:tmax
+    ninfected_hyperedge_size = Vector{Dict{Int,Int}}(undef,tmax) # number of infected nodes in a binned hyperedge 
+    nhyperedge_transmissions = Vector{Dict{Int,Int}}(undef,tmax) # number of times a binned hyperedge passes an infection 
+    @showprogress for t in 1:tmax # main loop 
         ninfected[t] = count(x->x==StateInfected, state)
-        _update_state_hyper!(weighted_neighlist, state, newstate, beta, gamma, delta, exo, hyper_beta_func)
+        # intialize binned hyperedge stats 
+        t_ninfected_hyperedge_size = Dict{Int,Int}()
+        t_nhyperedge_transmissions = Dict{Int,Int}()
+        # inplace updates 
+        _update_state_hyper!(weighted_neighlist, state, newstate, beta, gamma, delta, exo, hyper_beta_func,
+                                t_ninfected_hyperedge_size,
+                                t_nhyperedge_transmissions)
+        # update states 
         state, newstate = newstate, state # swap... 
+        # cache binned hyperedge stats 
+        ninfected_hyperedge_size[t] = Dict(key=>val for (key,val) in pairs(t_ninfected_hyperedge_size))
+        nhyperedge_transmissions[t] = Dict(key=>val for (key,val) in pairs(t_nhyperedge_transmissions))
     end
-    return ninfected,state
+    return ninfected,state,ninfected_hyperedge_size,nhyperedge_transmissions
 end 
-sirs_hyper(hedges, seednode::Int, beta=3e-2, gamma=5e-2, delta=5e-2, exo=5/100000, tmax=365*10, hyper_beta_func="linear") = sirs_hyper(hedges, [seednode], beta, gamma, delta, exo, tmax,hyper_beta_func)
+sirs_hyper(hedges::Vector{Vector{Int}}, seednode::Int, beta=3e-2, gamma=5e-2, delta=5e-2, exo=5/100000, tmax=365*10, hyper_beta_func::String="linear") = sirs_hyper(hedges, [seednode], beta, gamma, delta, exo, tmax,hyper_beta_func)
 
 #TODO update with previous changes 
 ### parallel version of the code
@@ -233,20 +253,47 @@ function parallel_sirs(edges, seed_nodes;
     @everywhere beta,gamma,delta,exo,tmax = $beta,$gamma,$delta,$exo,$tmax
     @everywhere cached_edges_function(seednode) = first(sirs(edges,seednode,beta,gamma,delta,exo,tmax)) #get infection results but toss out states
     #main pmap function call
-    infection_results = @showprogress pmap(x->cached_edges_function(x),seed_nodes)
+    infection_results = @showprogress pmap(x->compute_graph_stats(x),seed_nodes)
     #clean up
     return infection_results
 end 
-function parallel_sirs_hyper(hedges, seed_nodes;
-                        beta=3e-2, gamma=5e-2, delta=1/365, exo=5/100000, tmax=365*10, hyper_beta_func="linear")
-    println("USING $(lastindex(workers())) WORKERS for $(lastindex(seed_nodes)) NODES")
+# function parallel_sirs_hyper(hedges, seed_nodes;
+#                         beta=3e-2, gamma=5e-2, delta=1/365, exo=5/100000, tmax=365*10, hyper_beta_func="linear")
+#     println("USING $(lastindex(workers())) WORKERS for $(lastindex(seed_nodes)) NODES")
+#     #cache worker information
+#     @everywhere hedges = $hedges 
+#     #temporary.. if we want to vary params, wrap this in an iterator and modify the below helper function
+#     @everywhere beta,gamma,delta,exo,tmax,hyper_beta_func = $beta,$gamma,$delta,$exo,$tmax,$hyper_beta_func
+#     @everywhere cached_edges_function(seednode) = first(sirs_hyper(hedges,seednode,beta,gamma,delta,exo,tmax,hyper_beta_func)) 
+#     #main pmap function call
+#     infection_results = @showprogress pmap(x->cached_edges_function(x),seed_nodes)
+#     #clean up
+#     return infection_results
+# end
+
+# want to do all parameters for a single network. for epidemic parameters, can accept either Float64 or Vector{Float64}
+# for seed_nodes, could be a vector or vector of vectors. 
+function parallel_sirs_hyper(
+    hedges,
+    seed_nodes::Vector{Vector{S}} = [[1]];
+    beta::Vector{T} = [5e-2], 
+    gamma::Vector{T} = [5e-2], 
+    delta::Vector{T} = [1/365], 
+    exo::Vector{T} = [5/100000], 
+    tmax::Vector{S} = [365*10], 
+    hyper_beta_func::Vector{String} = ["linear"]
+) where {T, S}
+
     #cache worker information
     @everywhere hedges = $hedges 
-    #temporary.. if we want to vary params, wrap this in an iterator and modify the below helper function
-    @everywhere beta,gamma,delta,exo,tmax,hyper_beta_func = $beta,$gamma,$delta,$exo,$tmax,$hyper_beta_func
-    @everywhere cached_edges_function(seednode) = first(sirs_hyper(hedges,seednode,beta,gamma,delta,exo,tmax,hyper_beta_func)) 
-    #main pmap function call
-    infection_results = @showprogress pmap(x->cached_edges_function(x),seed_nodes)
+    # wrap other args into an iterator 
+    epi_params = Base.Iterators.product(seed_nodes,beta,gamma,delta,exo,tmax,hyper_beta_func)
+    # helper function for passing parameters. 
+    @everywhere compute_graph_stats(seeds,beta,gamma,delta,exo,tmax,hyper_beta_func) = sirs_hyper(hedges,seeds,beta,gamma,delta,exo,tmax,hyper_beta_func)[[1,3,4]]
+    
+    println("USING $(lastindex(workers())) WORKERS for $(length(epi_params)) PARAMETERS")
+    #main parallel function call
+    infection_results = @showprogress pmap(x->compute_graph_stats(x...), epi_params)
     #clean up
-    return infection_results
+    return infection_results, epi_params
 end

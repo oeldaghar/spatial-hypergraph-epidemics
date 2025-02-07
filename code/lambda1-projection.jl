@@ -11,7 +11,7 @@ function hypergraph_edges(X;degreedist,radfunc=(dist,deg) -> dist/sqrt(deg))
       maxdist = maximum(dists) 
       pts = @view X[:,idxs]
       rad = radfunc(maxdist,deg)
-      clusters = dbscan(pts, rad)
+      clusters = dbscan(pts, rad).clusters
       for c in clusters
         e = [i]
         for v in c.core_indices

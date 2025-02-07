@@ -30,7 +30,7 @@ function generate_data(n=5000,d=2,ngraphs=5;rseed=1)
         sort!(hedges)
         unique!(hedges)
         #save info 
-        gname = "spatial-hypergraph-$n-$d-$alpha-$rseed"
+        gname = "spatial-hypergraph-$n-$d-$alpha-$rseed-newalpha"
         file_name = "data/hypergraphs/$gname.txt"
         save_hedges(hedges,file_name)
         file_name = "data/hypergraphs/$gname.xy"
