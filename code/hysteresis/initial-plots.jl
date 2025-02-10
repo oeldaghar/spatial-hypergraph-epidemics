@@ -87,6 +87,13 @@ function load_epidemic_data(data_dir,fname;excluded=[])
     return data 
 end
 
+# test_data = load_epidemic_data("data/hysteresis/sirs/", "spatial-hypergraph-5000-2-2.0-1-newalpha-TEST.jsonl")
+# data_dir = "data/hysteresis/sirs/"
+# fname = "spatial-hypergraph-5000-2-2.0-1-newalpha-TEST.jsonl"
+# f1,f2,f3 = plot_hysteresis(data_dir, fname)
+# display(f1)
+# display(f2)
+# display(f3)
 # similar to above but rather than load the entire data in, we reduce on the memory intensive keys 
 # "ntransmissions_hyperedge" and "ninfected_hyperedge".
 function load_epidemic_data_reduce(data_dir,fname,reduce_func;excluded=[])
@@ -178,7 +185,7 @@ function plot_hysteresis(data_dir, fname)
         Plots.plot!(f,xscale=:log10)
     end
 
-    return _plot_keys(linear_keys, "Linear"),_plot_keys(sqrt_keys, "Sqrt")
+    return _plot_keys(linear_keys, "Linear"),_plot_keys(sqrt_keys, "Sqrt"), _plot_keys([k for k in static_keys if k[2] == "pairwise"], "Pairwise")
 end
 
 ################################

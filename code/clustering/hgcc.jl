@@ -122,26 +122,10 @@ end
     return global_clustering_coefficient(g)
 end
 
-# @everywhere function get_global_cc_g(biadj)
-#     # this function projects the hypergraph onto a (unweighted) graph and computes the graph global clustering coefficient
-#     # the matrix A is the adj of the projected graph
-#     A = biadj' * biadj
-#     A .= A .!= 0
-#     A[diagind(A)] .= 0
-#     g = SimpleGraph(A)
-#     global_cc_g = global_clustering_coefficient(g) 
-#     return global_cc_g
-# end
-
-# TODO run the plotting figures 
-
-Random.seed!(1234)
-
-d = 2
-n = 10
-n_trials = 25
-n_alphas = 25
-alphas = range(0,2,length=n_alphas)
+@everywhere function get_local_cc(hedges)
+    g = SimpleGraph(pairwise_proj(hedges))
+    return mean(local_clustering_coefficient(g))
+end
 
 @everywhere function run_cc_trial(n,d,alphas)
     X = rand(d,n)
@@ -159,67 +143,109 @@ alphas = range(0,2,length=n_alphas)
     global_cc_hg = pmap(x->get_global_cc_hg(SparseMatrixCSC{Int}(get_biadj(x,n))),graphs)
     # println("Computing Global CC")
     global_cc_g = pmap(x->get_global_cc(x),graphs)
-    return [global_cc_g, global_cc_hg]
+    local_cc_g = pmap(x->get_local_cc(x),graphs)
+    return [global_cc_g, local_cc_g, global_cc_hg]
 end
 function get_cc_row_plotting_data(n=10000,d=2,alphas=range(0,2,25),n_trials=10)
     trials = @showprogress map(x->run_cc_trial(n,d,alphas),1:n_trials)
     global_cc_g_mat = reduce(hcat,first.(trials))
-    global_cc_hg_mat = reduce(hcat,map(x->x[2],trials))
-    return [global_cc_g_mat, global_cc_hg_mat]
+    local_cc_g_mat = reduce(hcat,map(x->x[2],trials))
+    global_cc_hg_mat = reduce(hcat,map(x->x[3],trials))
+    return [global_cc_g_mat, local_cc_g_mat, global_cc_hg_mat]
 end
 
 println("Simulating data...")
-n = 10000
+Random.seed!(1234)
+n = 1000
 alphas = range(0,2,25)
 row1 = get_cc_row_plotting_data(n,2,alphas)
 row2 = get_cc_row_plotting_data(n,5,alphas)
 row3 = get_cc_row_plotting_data(n,10,alphas)
 
 data = [row1,row2,row3]
-row1
 # PLOT 1 - quantiles
-function make_cc_fig(row_data)
-    global_cc_g_mat, global_cc_hg_mat = row_data
-
-    plt = Plots.plot(layout=(1,2), margin=6*Plots.mm)
-    Plots.plot!(plt, size=(800,300))
-
-    g_q_info = mapslices(x->quantile(x,[0.0,0.5,1.0]),global_cc_g_mat,dims=2)
-    q_lower,q_upper = g_q_info[:,2].-g_q_info[:,1], g_q_info[:,3].-g_q_info[:,2]
-    Plots.plot!(alphas, g_q_info[:,2], ribbon=(q_lower,q_upper), 
+function quantile_plot(data_mat,alphas)
+    q_info = mapslices(x->quantile(x,[0.0,0.5,1.0]),data_mat,dims=2)
+    q_lower = q_info[:,2].-q_info[:,1]
+    q_upper = q_info[:,3].-q_info[:,2]
+    f = Plots.plot(alphas, q_info[:,2], ribbon=(q_lower,q_upper), 
                 leg=false, 
-                xlabel=L"\alpha", 
-                ylabel="Pairwise CC", 
+                # xlabel=L"\alpha", 
+                # ylabel="Pairwise CC", 
                 guidefontsize = 14,
                 linewidth=2, 
                 marker=:circle, 
                 markerstrokewidth=0, 
                 ylims=(0,1),
-                subplot=1)
+    )   
+    return f 
+end
 
-    hg_q_info = mapslices(x->quantile(x,[0.0,0.5,1.0]),global_cc_hg_mat,dims=2)
-    q_lower,q_upper = hg_q_info[:,2].-hg_q_info[:,1], hg_q_info[:,3].-hg_q_info[:,2]
-    Plots.plot!(alphas, hg_q_info[:,2], ribbon=(q_lower,q_upper),
-                leg=false,
+
+function make_cc_fig(row_data)
+    global_cc_g_mat, local_cc_g_mat ,global_cc_hg_mat = row_data
+
+    f1 = quantile_plot(global_cc_g_mat,alphas)
+    Plots.plot!(f1,
                 xlabel=L"\alpha", 
-                ylabel="Bipartite CC", 
-                guidefontsize = 14,
-                linewidth=2, 
-                marker=:circle, 
-                markerstrokewidth=0, 
-                ylims=(0,0.5),
-                subplot=2)
+                ylabel="Global Pairwise CC", 
+            )
 
+    f2 = quantile_plot(local_cc_g_mat,alphas)
+    Plots.plot!(f2,
+                xlabel=L"\alpha", 
+                ylabel="Local Pairwise CC", 
+                ylims = (0.2,0.85)
+            )
+
+    f3 = quantile_plot(global_cc_hg_mat,alphas)
+    Plots.plot!(f3,
+                xlabel=L"\alpha", 
+                ylabel=L"CC_4", 
+                ylims=(0,0.35)
+            )
+    plt = Plots.plot(f1,f2,f3,layout=(1,3), margin=6*Plots.mm,size=(1800,400))
+                                        
     #touch up margins
-    Plots.plot!(plt[2],left_margin=0Measures.mm)
+    Plots.plot!(plt[2],left_margin=2Measures.mm,bottom_margin=5Measures.mm)
+    Plots.plot!(plt[1],left_margin=10Measures.mm)
     return plt 
 end
 
-f = make_cc_fig(row1)
-Plots.plot!(f,plot_title="n=$n d=2",plot_titlefontsize=20)
-f = make_cc_fig(row2)
-Plots.plot!(f,plot_title="n=$n d=5",plot_titlefontsize=20)
-f = make_cc_fig(row3)
-Plots.plot!(f,plot_title="n=$n d=10",plot_titlefontsize=20)
-# savefig(plt, "/Users/yuzhu/Desktop/add/n1000.pdf")
+f1 = make_cc_fig(row1)
+Plots.plot!(f1,plot_title="n=$n d=2",plot_titlefontsize=20)
+f2 = make_cc_fig(row2)
+Plots.plot!(f2,plot_title="n=$n d=5",plot_titlefontsize=20)
+f3 = make_cc_fig(row3)
+Plots.plot!(f3,plot_title="n=$n d=10",plot_titlefontsize=20)
 
+# put them all together
+Plots.plot(f1,f2,f3,layout=(3,1),size=(1800,1200),
+        top_margin=-5Plots.mm)
+
+
+# Tracking the evolution of a single node whose local CC decreases across alpha
+
+@everywhere function track_local_cc(n,d,alphas)
+    X = rand(d,n)
+
+    deg_list = zeros(Int, n)
+    degreedist = LogNormal(log(3),1)
+    for i = 1:n
+        deg_list[i] = min(ceil(Int,rand(degreedist)),n-1)
+    end
+
+    # make graphs and convert to biadjacency matrices 
+    # println("Computing Biadjacency Matrices...")
+    graphs = pmap(alpha -> hypergraph_edges(X, deg_list;radfunc=get_func(alpha)), alphas)
+    pairwise_graphs = pmap(x->pairwise_proj(x),graphs)
+    
+    local_cc_g = pmap(x->local_clustering_coefficient(SimpleGraph(x)),pairwise_graphs)
+    return X,deg_list,graphs,pairwise_graphs,local_cc_g
+end
+
+res = track_local_cc(1000,2,range(0,2,10))
+
+reduce(hcat,res[end])
+
+res[4][end][:,1]
