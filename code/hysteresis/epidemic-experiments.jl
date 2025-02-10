@@ -30,16 +30,17 @@ initial_infected_fractions = [0.05, 0.1, 0.15, 0.2, 0.25, 0.5, 0.75, 0.95]
 beta = vcat(1e-3:1e-3:1e-2, 2e-2:1e-2:1e-1, 2e-1:1e-1:9e-1)
 gamma,delta,exo = [5e-2],[1/20],[5/1e6]
 tmax = [365*10]
-hyper_beta_func = ["linear","sqrt"]
+# hyper_beta_func = ["linear","sqrt","pairwise"] # full set but running incremental diffusions
+hyper_beta_func = ["pairwise"]
 
 # PARAMETERS FOR TESTING
 # nsamples_per_seeds = 1
 # initial_infected_fractions = [0.05, 0.1]
 # # epidemic parameters 
-# beta = [1e-2,5e-2] #vcat(1e-3:1e-3:1e-2, 2e-2:1e-2:1e-1, 2e-1:1e-1:9e-1)
+# beta = [1e-2,3e-2,5e-2] #vcat(1e-3:1e-3:1e-2, 2e-2:1e-2:1e-1, 2e-1:1e-1:9e-1)
 # gamma,delta,exo = [5e-2],[5e-2],[0.0]
 # tmax = [365*10]
-# hyper_beta_func = ["linear"]
+# hyper_beta_func = ["linear","sqrt","pairwise"]
 
 # Function to write a single epidemics result to the JSONL file
 function write_result(io, params, info)
@@ -62,7 +63,7 @@ end
 gnames = [
         #smaller graphs         
         "spatial-hypergraph-5000-2", 
-        "spatial-hypergraph-5000-5", # done but diff file names 
+        "spatial-hypergraph-5000-5",
         #larger graphs 
         "spatial-hypergraph-50000-2", 
         "spatial-hypergraph-50000-5",
@@ -111,7 +112,7 @@ for gname in gnames
         jsonl_file = joinpath(DATA_PATH, dst_fname)
         println("SAVING RESULTS TO FILE: $jsonl_file")
         stime = time()
-        open(jsonl_file, "w") do io
+        open(jsonl_file, "a") do io
             # infection_information = reduce(vcat,hyper_results[1])
             # epi_params = reduce(vcat,hyper_results[2])
             for (params, info) in zip(reduce(vcat,hyper_results[2]), reduce(vcat,hyper_results[1]))

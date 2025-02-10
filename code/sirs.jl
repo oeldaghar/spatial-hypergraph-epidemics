@@ -108,7 +108,21 @@ mutable struct Neighbor
     weight::Int
 end
 
-# hyper_beta_func options: "linear", "sqrt", or "squared"
+# hyper_beta_func options: "linear", "sqrt", "squared", or "pairwise"
+
+function hyperedge_normalization(hyper_beta_func::String, size::Int)
+    if hyper_beta_func == "linear"
+        return size
+    elseif hyper_beta_func == "sqrt"
+        return sqrt(size)
+    elseif hyper_beta_func == "squared"
+        return size^2
+    elseif hyper_beta_func == "pairwise"
+        return 1.0
+    else
+        throw(ArgumentError("hyper_beta_func should be one of 'linear', 'sqrt', 'squared', or 'pairwise'"))
+    end
+end
 function _update_state_hyper!(
                                 weighted_neighlist::Vector{Vector{Neighbor}},
                                 currstate::Vector{Int8}, 
@@ -122,6 +136,8 @@ function _update_state_hyper!(
                                 ntransmissions_hyperedge::Dict{Int,Int}=Dict{Int,Int}()
                             )
     copy!(newstate, currstate) # copy the current state to the new state)
+    # caching this for slight optimizatioin
+    beta_complement = 1-beta 
     @inbounds for i in eachindex(weighted_neighlist)
         if rand() < exo # exogenous infections
             newstate[i] = StateInfected
@@ -134,16 +150,9 @@ function _update_state_hyper!(
                 #define hyperedge contribution
                 # hyper_beta = f(|h|,|h ⋂ I|) .. depends on size of hyperedge and number of infected nodes 
                 if infected_ego_size>0
-                    hyper_beta = 1-(1-beta)^infected_ego_size 
-                    if hyper_beta_func=="linear"
-                        hyper_beta/=lastindex(i_ego_edge)
-                    elseif hyper_beta_func=="sqrt"
-                        hyper_beta/=sqrt(lastindex(i_ego_edge))
-                    elseif hyper_beta_func=="squared"
-                        hyper_beta/=(lastindex(i_ego_edge)^2)
-                    else
-                        ArgumentError("hyper_beta_func should be one of 'linear', 'sqrt', or 'squared'"  )
-                    end
+                    # 1-(1-beta)^(num_infected_nodes) / hyperedge_normalization
+                    hyper_beta = 1-beta_complement^infected_ego_size 
+                    hyper_beta /= hyperedge_normalization(hyper_beta_func, lastindex(i_ego_edge))
                     if rand() < hyper_beta
                         newstate[i] = StateInfected
 
