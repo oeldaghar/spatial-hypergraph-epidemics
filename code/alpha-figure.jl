@@ -76,35 +76,44 @@ function quantile_figure(data,alphas)
     return f
 end
 
-
 function _remove_tick_labels(f)
     curr_yticks = Plots.yticks(f)
     new_yticks = (curr_yticks[1],["" for i=1:lastindex(curr_yticks[1])])
     Plots.plot!(f,yticks=new_yticks,ylabel="")
 end    
 
-
 alphas = range(0,2,25)
 n = 10000
-d = 10
+# d = 10
 ntrials = 25
 figs = []
-for alpha_func in [get_func,alpha_func_linear,alpha_func_no_dim]
-    trials = _get_plotting_data(n,d,alphas,ntrials,alpha_func)
-    nedges = reduce(hcat,trials)
-    push!(figs,quantile_figure(nedges,alphas))
+for d in [2,5,10]
+    for alpha_func in [get_func,alpha_func_linear,alpha_func_no_dim]
+        trials = _get_plotting_data(n,d,alphas,ntrials,alpha_func)
+        nedges = reduce(hcat,trials)
+        push!(figs,quantile_figure(nedges,alphas))
+    end
 end
-
 # put figure together 
-plt = Plots.plot(figs...,layout = (1,3))
+plt = Plots.plot(figs...,layout = (3,3),
+                    size=(1500,1400),
+                    top_margin=8Measures.mm,
+                    link=:all)
 # touch up margins and label 
-Plots.plot!(plt,plot_title = "n=$n, d=$d",link=:all,size=(1800,500),
-                plot_titlefontsize=22)
-_remove_tick_labels(plt[2])
-_remove_tick_labels(plt[3])
-Plots.plot!(plt,bottom_margin=8mm)
+Plots.plot!(plt[2],title = "n=$n, d=2",
+        titlefontsize=22)
+Plots.plot!(plt[5],title = "n=$n, d=5",
+        titlefontsize=22)
+Plots.plot!(plt[8],title = "n=$n, d=10",
+        titlefontsize=22)
+for i=1:9
+    if i%3!=1
+        _remove_tick_labels(plt[i])
+    end
+end
+Plots.plot!(plt,bottom_margin=2mm)
 Plots.plot!(plt[1],left_margin=8mm)
-Plots.plot!(plt,top_margin=8mm,dpi = 1000)
+Plots.plot!(plt,top_margin=5mm,dpi = 1000)
 
 Plots.savefig(plt,"data/output/figures/final/alpha-figure.pdf")
 Plots.savefig(plt,"data/output/figures/final/alpha-figure.png")
