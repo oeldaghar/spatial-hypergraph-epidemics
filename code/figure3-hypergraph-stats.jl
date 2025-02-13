@@ -154,9 +154,9 @@ end
 end
 
 @everywhere function run_trial(n,d,alphas,centers=1)
-    # X = rand(d,n)
-    X,_ = make_blobs(n,d,centers=centers,as_table = false)
-    X = Matrix(X')
+    X = rand(d,n)
+    # X,_ = make_blobs(n,d,centers=centers,as_table = false)
+    # X = Matrix(X')
 
     deg_list = zeros(Int, n)
     degreedist = LogNormal(log(3),1)
@@ -346,7 +346,7 @@ function make_fig(data)
 end
 
 alphas = range(0,2,25)
-n = 1000
+n = 10000
 centers = 1
 println("Simulating data...")
 row1 = get_row_plotting_data(n,2,alphas,centers)
@@ -356,6 +356,6 @@ data = [row1,row2,row3]
 
 plt = make_fig(data)
 
-# Plots.savefig(plt,"data/output/figures/final/hypergraph-stats.pdf")
+Plots.savefig(plt,"data/output/figures/final/hypergraph-stats.pdf")
 # Plots.plot!(plt,dpi=1000)
 # Plots.savefig(plt,"data/output/figures/final/hypergraph-stats.png")

@@ -212,6 +212,9 @@ row1 = get_cc_row_plotting_data(n,2,alphas)
 row2 = get_cc_row_plotting_data(n,5,alphas)
 row3 = get_cc_row_plotting_data(n,10,alphas)
 
+
+row1[3]
+
 data = [row1,row2,row3]
 
 f1 = make_cc_fig(row1)
@@ -222,8 +225,10 @@ f3 = make_cc_fig(row3)
 Plots.plot!(f3,plot_title="n=$n d=10",plot_titlefontsize=20)
 
 # put them all together
-Plots.plot(f1,f2,f3,layout=(3,1),size=(1800,1200),
+plt = Plots.plot(f1,f2,f3,layout=(3,1),size=(1400,1200),
         top_margin=-5Plots.mm)
+
+Plots.savefig(plt,"data/output/figures/final/hypergraph-cc.pdf")
 
 # Tracking the evolution of a single node whose local CC decreases across alpha
 
