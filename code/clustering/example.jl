@@ -5,6 +5,9 @@ using Clustering
 using LazySets
 using Plots
 using Random
+using LaTeXStrings
+using SparseArrays
+
 
 function circle(x, y, r)
     theta = LinRange(0, 2*pi, 500)
@@ -35,8 +38,7 @@ T = BallTree(xy)
 # the 3th input parameter i is the node id
 # this function plot the hyperedge formed around node i (the i-th one in the given xy) whose degree is given by deg
 # if alpha < 1, modify the function of rad
-function plot_subfig(subfig, deg, i, alpha)
-
+function get_edges(xy,deg,i,alpha)
     idxs, dists = knn(T, xy[:,i], deg+1)
     maxdist = maximum(dists)
     pts = @view xy[:,idxs]
@@ -59,7 +61,13 @@ function plot_subfig(subfig, deg, i, alpha)
             push!(edges, e)
         end
     end
+    return edges,maxdist
+end
 
+function plot_subfig(subfig, deg, i, alpha)
+
+    edges,maxdist = get_edges(xy,deg,i,alpha)
+    
     Plots.plot!(plt, 
         circle(xy[1,i], xy[2,i], maxdist+0.015), 
         c=:red,
@@ -85,7 +93,6 @@ function plot_subfig(subfig, deg, i, alpha)
     annotate!(plt, v_annotation..., subplot=subfig)
     annotate!(plt, u_annotation..., subplot=subfig)
 end
-
 plot_subfig(1, 4, 1, 1.9)
 plot_subfig(1, 4, 2, 1.9)
 plot_subfig(2, 4, 1, 2)
@@ -95,22 +102,22 @@ plot_subfig(2, 4, 2, 2)
 subfig = 3
 
 # plot graph edges
-Plots.plot!(plt, xy[1,[1,2]], xy[2,[1,2]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[1,3]], xy[2,[1,3]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[1,4]], xy[2,[1,4]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[1,5]], xy[2,[1,5]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[3,4]], xy[2,[3,4]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[3,5]], xy[2,[3,5]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[4,5]], xy[2,[4,5]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[1,6]], xy[2,[1,6]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[1,7]], xy[2,[1,7]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[1,8]], xy[2,[1,8]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[2,6]], xy[2,[2,6]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[2,7]], xy[2,[2,7]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[2,8]], xy[2,[2,8]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[6,7]], xy[2,[6,7]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[6,8]], xy[2,[6,8]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[7,8]], xy[2,[7,8]], subplot=subfig, c=:blue)
+Plots.plot!(plt, xy[1,[1,2]], xy[2,[1,2]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[1,3]], xy[2,[1,3]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[1,4]], xy[2,[1,4]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[1,5]], xy[2,[1,5]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[3,4]], xy[2,[3,4]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[3,5]], xy[2,[3,5]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[4,5]], xy[2,[4,5]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[1,6]], xy[2,[1,6]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[1,7]], xy[2,[1,7]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[1,8]], xy[2,[1,8]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[2,6]], xy[2,[2,6]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[2,7]], xy[2,[2,7]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[2,8]], xy[2,[2,8]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[6,7]], xy[2,[6,7]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[6,8]], xy[2,[6,8]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[7,8]], xy[2,[7,8]], subplot=subfig, c=:grey)
 
 # plot graph nodes
 Plots.scatter!(plt, 
@@ -126,22 +133,22 @@ annotate!(plt, u_annotation..., subplot=subfig)
 # plot subfigure 4
 subfig = 4
 
-Plots.plot!(plt, xy[1,[1,2]], xy[2,[1,2]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[1,3]], xy[2,[1,3]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[1,4]], xy[2,[1,4]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[1,5]], xy[2,[1,5]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[3,4]], xy[2,[3,4]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[3,5]], xy[2,[3,5]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[4,5]], xy[2,[4,5]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[1,6]], xy[2,[1,6]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[1,7]], xy[2,[1,7]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[1,8]], xy[2,[1,8]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[2,6]], xy[2,[2,6]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[2,7]], xy[2,[2,7]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[2,8]], xy[2,[2,8]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[6,7]], xy[2,[6,7]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[6,8]], xy[2,[6,8]], subplot=subfig, c=:blue)
-Plots.plot!(plt, xy[1,[7,8]], xy[2,[7,8]], subplot=subfig, c=:blue)
+Plots.plot!(plt, xy[1,[1,2]], xy[2,[1,2]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[1,3]], xy[2,[1,3]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[1,4]], xy[2,[1,4]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[1,5]], xy[2,[1,5]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[3,4]], xy[2,[3,4]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[3,5]], xy[2,[3,5]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[4,5]], xy[2,[4,5]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[1,6]], xy[2,[1,6]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[1,7]], xy[2,[1,7]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[1,8]], xy[2,[1,8]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[2,6]], xy[2,[2,6]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[2,7]], xy[2,[2,7]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[2,8]], xy[2,[2,8]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[6,7]], xy[2,[6,7]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[6,8]], xy[2,[6,8]], subplot=subfig, c=:grey)
+Plots.plot!(plt, xy[1,[7,8]], xy[2,[7,8]], subplot=subfig, c=:grey)
 Plots.plot!(plt, xy[1,[2,3]], xy[2,[2,3]], subplot=subfig, c=:black)
 Plots.plot!(plt, xy[1,[2,4]], xy[2,[2,4]], subplot=subfig, c=:black)
 Plots.plot!(plt, xy[1,[2,5]], xy[2,[2,5]], subplot=subfig, c=:black)
@@ -198,6 +205,17 @@ Plots.scatter!(plt,
 annotate!(plt, v_annotation..., subplot=subfig)
 annotate!(plt, u_annotation..., subplot=subfig)
 
+# e1 , _ = get_edges(xy, 4, 1, 1.9)
+# e2 , _ = get_edges(xy, 4, 2, 1.9)
+
+# hedges = vcat(e1,e2)
+# G = SimpleGraph(pairwise_proj(hedges))
+# triangles(G,2)
+# binomial(degree(G,2),2)
+# local_clustering_coefficient(G,2)
+
+annotate!(plt, 0.5,0.85,L"C_u=\frac{6}{6}", subplot=subfig)
+
 
 subfig = 6
 
@@ -221,15 +239,15 @@ Plots.plot!(plt, xy[1,[6,7]], xy[2,[6,7]], subplot=subfig, c=:grey)
 Plots.plot!(plt, xy[1,[6,8]], xy[2,[6,8]], subplot=subfig, c=:grey)
 Plots.plot!(plt, xy[1,[7,8]], xy[2,[7,8]], subplot=subfig, c=:grey)
 
-Plots.plot!(plt, xy[1,[2,3]], xy[2,[2,3]], subplot=subfig, c=3, linewidth=3)
-Plots.plot!(plt, xy[1,[2,4]], xy[2,[2,4]], subplot=subfig, c=3, linewidth=3)
-Plots.plot!(plt, xy[1,[2,5]], xy[2,[2,5]], subplot=subfig, c=3, linewidth=3)
+Plots.plot!(plt, xy[1,[2,3]], xy[2,[2,3]], subplot=subfig, c=2, linewidth=3)
+Plots.plot!(plt, xy[1,[2,4]], xy[2,[2,4]], subplot=subfig, c=2, linewidth=3)
+Plots.plot!(plt, xy[1,[2,5]], xy[2,[2,5]], subplot=subfig, c=2, linewidth=3)
 
 Plots.scatter!(plt, 
         xy[1,[3,4,5]], 
         xy[2,[3,4,5]], 
         subplot=subfig,
-        color=3,
+        color=2,
         markerstrokewidth=0)
 
 Plots.scatter!(plt, 
@@ -258,7 +276,25 @@ Plots.scatter!(plt,
 
 annotate!(plt, v_annotation..., subplot=subfig)
 annotate!(plt, u_annotation..., subplot=subfig)
+annotate!(plt, 0.5,0.85,L"C_u=\frac{12}{21}", subplot=subfig)
 
+
+# e1 , _ = get_edges(xy, 4, 1, 2.0)
+# e2 , _ = get_edges(xy, 4, 2, 2.0)
+
+# hedges = vcat(e1,e2)
+# G = SimpleGraph(pairwise_proj(hedges))
+# triangles(G,2)
+# binomial(degree(G,2),2)
+# local_clustering_coefficient(G,2)
+
+# convert to pairwise 
 
 display(plt)
+
 # TODO fix up the margins
+Plots.plot!(plt,top_margin=-4Plots.mm,
+        left_margins=-1Plots.mm,
+        right_margins=-1Plots.mm)
+
+Plots.savefig("data/output/figures/final/cc-example.pdf")

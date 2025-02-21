@@ -7,6 +7,10 @@ using Distributed
 @everywhere using Combinatorics, Graphs, LinearAlgebra
 @everywhere using ProgressMeter
 
+# pairwise projections 
+using LazySets
+using MatrixNetworks
+
 @everywhere using SparseArrays
 # functions for data handling, like computing the biadjacency and pairwise projections of a hypergraphs from it's edges 
 @everywhere function get_biadj(hedges,n)
@@ -27,7 +31,7 @@ using Distributed
     return sparse(edges,nodes,ones(lastindex(nodes)),lastindex(hedges),n)
 end
 
-@everywhere function pairwise_proj(hedges)
+@everywhere function pairwise_proj(hedges;multigraph=false)
     ei = Vector{Int}()
     ej = Vector{Int}()
     for h in hedges
@@ -44,7 +48,9 @@ end
         A[i,i]=0
     end
     dropzeros!(A)
-    fill!(A.nzval,1.0)
+    if !multigraph # retain edge weights as multigraph representation
+        fill!(A.nzval,1.0)
+    end
     return A
 end
 
@@ -129,6 +135,65 @@ end
     return mean(local_clustering_coefficient(g))
 end
 
+@everywhere function multigraph_clustering(A::SparseMatrixCSC)
+    # Ensure input matrix is square
+    if size(A, 1) != size(A, 2)
+        throw(ArgumentError("Input matrix is not square. Got size: $(size(A))"))
+    end
+
+    rowval = rowvals(A)
+    n = lastindex(A, 1)
+
+    last_seen = zeros(Int, n)       # Counter-based neighbor tracking
+    current_iteration = 0          # Iteration counter
+
+    wedge_counts = zeros(Int, n)
+    tri_counts = zeros(Int, n)
+
+    neighbors = [rowval[nzrange(A, v)] for v in 1:lastindex(A, 1)]
+
+    @inbounds for v = 1:n
+        current_iteration += 1
+
+        # Cache neighbors using counter-based tracking
+        @inbounds for u in neighbors[v]
+            last_seen[u] = current_iteration
+        end
+
+        # Iterate over neighbors and track wedges
+        @inbounds for u in neighbors[v]
+            @inbounds for w in neighbors[u]
+                if w != v
+                    possible_wedges = A[u, v] * A[w, u]
+                    wedge_counts[u] += possible_wedges
+                    if last_seen[w] == current_iteration
+                        tri_counts[u] += clamp(A[w,v],0,possible_wedges)
+                    end
+                end
+            end
+        end
+    end
+    # each wedge gets counted twice (one from either side of the center)
+    return div.(tri_counts, 2), div.(wedge_counts, 2)
+end
+
+@everywhere function multigraph_clustering_coefficient(A::SparseMatrixCSC)
+    t,w = multigraph_clustering(A)
+    results = zeros(Float64,lastindex(t))
+    for ind = 1:lastindex(t)
+        if w[ind]>0
+            results[ind] = t[ind]/w[ind]
+        end
+    end
+    return results 
+end
+
+@everywhere function get_multigraph_cc(hedges)
+    A = pairwise_proj(hedges,multigraph=true)
+    cc = multigraph_clustering_coefficient(A)
+    return mean(cc)
+end 
+
 @everywhere function run_cc_trial(n,d,alphas)
     X = rand(d,n)
 
@@ -146,14 +211,18 @@ end
     # println("Computing Global CC")
     global_cc_g = pmap(x->get_global_cc(x),graphs)
     local_cc_g = pmap(x->get_local_cc(x),graphs)
-    return [global_cc_g, local_cc_g, global_cc_hg]
+    # mulitgraph clustering 
+    local_cc_mg = pmap(x->get_multigraph_cc(x),graphs)
+    return [global_cc_g, local_cc_g, global_cc_hg, local_cc_mg]
 end
+
 function get_cc_row_plotting_data(n=10000,d=2,alphas=range(0,2,25),n_trials=10)
     trials = @showprogress map(x->run_cc_trial(n,d,alphas),1:n_trials)
     global_cc_g_mat = reduce(hcat,first.(trials))
     local_cc_g_mat = reduce(hcat,map(x->x[2],trials))
     global_cc_hg_mat = reduce(hcat,map(x->x[3],trials))
-    return [global_cc_g_mat, local_cc_g_mat, global_cc_hg_mat]
+    local_cc_mg_mat = reduce(hcat,map(x->x[4],trials))
+    return [global_cc_g_mat, local_cc_g_mat, global_cc_hg_mat, local_cc_mg_mat]
 end
 
 # PLOT 1 - quantiles
@@ -175,7 +244,7 @@ function quantile_plot(data_mat,alphas)
 end
 
 function make_cc_fig(row_data)
-    global_cc_g_mat, local_cc_g_mat ,global_cc_hg_mat = row_data
+    global_cc_g_mat, local_cc_g_mat ,global_cc_hg_mat, local_cc_mg_mat = row_data
 
     f1 = quantile_plot(global_cc_g_mat,alphas)
     Plots.plot!(f1,
@@ -196,7 +265,14 @@ function make_cc_fig(row_data)
                 ylabel=L"CC_4", 
                 ylims=(0,0.35)
             )
-    plt = Plots.plot(f1,f2,f3,layout=(1,3), margin=6*Plots.mm,size=(1800,400))
+
+    f4 = quantile_plot(local_cc_mg_mat,alphas)
+    Plots.plot!(f4,
+                xlabel=L"\alpha", 
+                ylabel="Multigraph Local CC", 
+                ylims=(0.15,0.5)
+            )
+    plt = Plots.plot(f1,f2,f3,f4,layout=(1,4), margin=6*Plots.mm,size=(1800,400))
                                         
     #touch up margins
     Plots.plot!(plt[2],left_margin=2Measures.mm,bottom_margin=5Measures.mm)
@@ -212,250 +288,52 @@ row1 = get_cc_row_plotting_data(n,2,alphas)
 row2 = get_cc_row_plotting_data(n,5,alphas)
 row3 = get_cc_row_plotting_data(n,10,alphas)
 
-
-row1[3]
-
 data = [row1,row2,row3]
 
 f1 = make_cc_fig(row1)
-Plots.plot!(f1,plot_title="n=$n d=2",plot_titlefontsize=20)
+Plots.plot!(f1,plot_title="n=$n d=2",plot_titlefontsize=24)
 f2 = make_cc_fig(row2)
-Plots.plot!(f2,plot_title="n=$n d=5",plot_titlefontsize=20)
+Plots.plot!(f2,plot_title="n=$n d=5",plot_titlefontsize=24)
 f3 = make_cc_fig(row3)
-Plots.plot!(f3,plot_title="n=$n d=10",plot_titlefontsize=20)
+Plots.plot!(f3,plot_title="n=$n d=10",plot_titlefontsize=24)
 
 # put them all together
 plt = Plots.plot(f1,f2,f3,layout=(3,1),size=(1400,1200),
-        top_margin=-5Plots.mm)
+        top_margin=-5Plots.mm,dpi=500)
 
-Plots.savefig(plt,"data/output/figures/final/hypergraph-cc.pdf")
+Plots.savefig(plt,"data/output/figures/testing/hypergraph-cc.png")
+Plots.savefig(plt,"data/output/figures/testing/hypergraph-cc.pdf")
 
-# Tracking the evolution of a single node whose local CC decreases across alpha
+# # star graph 
+# A = sparse([0 0 0 1; 0 0 0 1; 0 0 0 1;1 1 1 0])
+# @time t,w = multigraph_clustering(A);
+# norm(w.-binomial.(vec(sum(A;dims=1)),2))==0
+# norm(t .- Graphs.triangles(SimpleGraph(A)))==0
 
-@everywhere function track_local_cc(n,d,alphas)
-    X = rand(d,n)
+# # random graphs 
+# A = sparse(Graphs.erdos_renyi(1000,0.25))
+# @time t,w = multigraph_clustering_optimized(A);
+# norm(w.-binomial.(vec(sum(A;dims=1)),2))==0
+# norm(t .- Graphs.triangles(SimpleGraph(A)))==0
 
-    deg_list = zeros(Int, n)
-    degreedist = LogNormal(log(3),1)
-    for i = 1:n
-        deg_list[i] = min(ceil(Int,rand(degreedist)),n-1)
-    end
+# # specific examples with weights 
+# A = sparse([0 2 0;2 0 2;0 2 0])
+# t,w = multigraph_clustering_optimized(A)
+# norm(t)==0
+# all(w .== [0,4,0])
 
-    # make graphs and convert to biadjacency matrices 
-    # println("Computing Biadjacency Matrices...")
-    graphs = pmap(alpha -> hypergraph_edges(X, deg_list;radfunc=get_func(alpha)), alphas)
-    pairwise_graphs = pmap(x->pairwise_proj(x),graphs)
-    
-    local_cc_g = pmap(x->local_clustering_coefficient(SimpleGraph(x)),pairwise_graphs)
-    return X,deg_list,graphs,pairwise_graphs,local_cc_g
-end
+# # specific weighted examples 
+# A = sparse([0 2 1;2 0 2;1 2 0])
+# t,w = multigraph_clustering_optimized(A)
+# norm(t.-[2,1,2])==0
+# norm(w .- [2,4,2])==0
 
+# A = sparse([0 2 2;2 0 2;2 2 0])
+# t,w = multigraph_clustering_optimized(A)
+# norm(t.-[2,2,2])==0
+# norm(w .- [4,4,4])==0
 
-Random.seed!(278) #small intermediate decrease
-alphas = range(0,2,10)
-X,deg_list,graphs,pairwise_graphs,local_cc_g = track_local_cc(200,2,alphas);
-
-dvecs = reduce(hcat,map(x->vec(sum(x,dims=1)),pairwise_graphs));
-local_cc_g = reduce(hcat,local_cc_g);
-# all elements that experience a decrease 
-inds = findall((local_cc_g[:,2].-local_cc_g[:,1]).<0)
-val,ind = findmin(dvecs[inds,end])
-
-node_id = inds[ind]
-dvecs[node_id,end]
-# find first decrease for this node 
-first_decrease = findfirst([local_cc_g[node_id,i+1]-local_cc_g[node_id,i]<0 for i=1:lastindex(local_cc_g,2)-1])+1
-
-local_cc_g[node_id,first_decrease-1]
-local_cc_g[node_id,first_decrease]
-
-function get_ego_info(node,hedges,X)
-    # find all hyperedges containing our node 
-    hedges_ind = findall([node in x for x in hedges])
-    ego_hedges = hedges[hedges_ind]
-    ego_neighbors = reduce(vcat,ego_hedges)
-    ego_neighbors = sort(unique(ego_neighbors))
-    
-    # induced_edges = []
-    # for edge in hedges
-    #     if any([v in edge for v in ego_neighbors])
-    #         push!(induced_edges,edge)
-    #     end
-    # end
-    # induced_nodes = sort(unique(reduce(vcat,induced_edges)))
-    # get data coordinates for ego neighbors 
-    return ego_hedges,ego_neighbors,X[:,ego_neighbors] #, induced_edges, induced_nodes, X[:,induced_nodes]
-end
-
-function get_induced_info(nodes,hedges,X)
-    # find all hyperedges containing our node 
-    induced_edges = []
-    for edge in hedges 
-        if any([node in edge for node in nodes])
-            push!(induced_edges,edge)
-        end
-    end
-    induced_nodes = sort(unique(reduce(vcat,induced_edges)))
-    return induced_edges, induced_nodes
-end
-
-
-# get_ego_info(node_id,graphs)
-# get_induced_info(old_neighbors,graphs[1],X)[2]
-
-# pairwise projections 
-using LazySets
-using MatrixNetworks
-
-function plot_hypergraph(X,hedges,nodes,projected=false)
-    plt = Plots.plot()
-    for edge in hedges
-        if length(edge) > 2 && projected==false
-            local b = [Ball2(X[:, v], 0.0005) for v in edge]
-            local c = ConvexHullArray(b)
-            Plots.plot!(plt, c, 1e-3, alpha=0.05, c=:blue)
-        else
-            Plots.plot!(plt, X[1,edge], X[2,edge], c=:blue)
-        end
-    end
-    xs = [X[1,v] for v in nodes]
-    ys = [X[2,v] for v in nodes]
-    Plots.scatter!(plt,xs,ys,leg=false,markerstrokewidth=0,markersize=12,markercolor=:blue)
-    return plt
-end
-
-
-figs = []
-for alpha_ind = 1:lastindex(graphs)
-    # hypergraph vis 1
-    curr_hedge,curr_neighbors,curr_X = get_ego_info(node_id,graphs[alpha_ind],X)
-    induced_edges,induced_nodes = get_induced_info(curr_neighbors,graphs[alpha_ind],X)
-
-    f = plot_hypergraph(X, induced_edges, curr_neighbors)
-    nwedges = binomial(length(curr_neighbors)-1,2)
-    ntris = length(collect(MatrixNetworks.triangles(pairwise_graphs[alpha_ind],node_id)))
-    ratio = round(ntris/nwedges,digits=2)
-    alpha_val = round(alphas[alpha_ind],digits=2)
-    Plots.plot!(f,annotation=(0.46,0.12,"alpha: $(alpha_val)\nWedges: $nwedges\nTriangles: $ntris\nRatio: $ratio"))
-    Plots.scatter!(f,[X[1,node_id]],[X[2,node_id]],markercolor=:red,markersize=12,
-            ylims = (0.05,0.16),
-            xlims = (0.43,0.47)
-    )
-    push!(figs,deepcopy(f))
-end
-Plots.plot(figs...,layout=(4,3),size=(600*3,400*4),link=:all)
-
-
-
-#### non-induced edges
-figs = []
-for alpha_ind = 1:lastindex(graphs)
-    # hypergraph vis 1
-    curr_hedge,curr_neighbors,curr_X = get_ego_info(node_id,graphs[alpha_ind],X)
-    # induced_edges,induced_nodes = get_induced_info(curr_neighbors,graphs[alpha_ind],X)
-
-    f = plot_hypergraph(X, curr_hedge, curr_neighbors)
-    nwedges = binomial(length(curr_neighbors)-1,2)
-    ntris = length(collect(MatrixNetworks.triangles(pairwise_graphs[alpha_ind],node_id)))
-    ratio = round(ntris/nwedges,digits=2)
-    alpha_val = round(alphas[alpha_ind],digits=2)
-    Plots.plot!(f,annotation=(0.46,0.12,"alpha: $(alpha_val)\nWedges: $nwedges\nTriangles: $ntris\nRatio: $ratio"))
-    Plots.scatter!(f,[X[1,node_id]],[X[2,node_id]],markercolor=:red,markersize=12,
-            ylims = (0.05,0.16),
-            xlims = (0.43,0.47)
-    )
-    push!(figs,deepcopy(f))
-end
-Plots.plot(figs...,layout=(4,3),size=(600*3,400*4),link=:all)
-
-
-
-
-
-function commonNeighbors(A::SparseMatrixCSC)
-    @assert issymmetric(A)
-    P = deepcopy(A)
-    fill!(nonzeros(P),0)
-    rowval = rowvals(A)
-    neighs = zeros(Bool, size(A,1))
-    for j=1:size(A,1)
-        # index neighbors
-        for nzj in nzrange(A, j)
-            neighs[rowval[nzj]] = true
-        end
-        # for each edge out of this node...
-        for nzj in nzrange(A, j)
-            i = rowval[nzj]
-            score = 0
-            for nzi in nzrange(A, i)
-                w = rowval[nzi]
-                if neighs[w] == true
-                    # for each neighbor of i (w) that is
-                    # also a neighbor of j neighs[w] = true
-                    # increase the score
-                    score += 1
-                end
-            end
-            nonzeros(P)[nzj] = score
-        end
-        # reset indicies
-        for nzj in nzrange(A, j)
-            neighs[rowval[nzj]] = false
-        end
-    end
-    return P
-end
-
-
-function multigraph_triangles(A::SparseMatrixCSC)
-    @assert(isequal(size(A)...))
-    rowval = rowvals(A)
-    d = vec(sum(A;dims=1))
-    neighs = zeros(Float64,lastindex(A,1))
-    wedge_counts = zeros(Int,lastindex(A,1))
-    tri_counts = zeros(Int,lastindex(A,1))
-    for v = 1:lastindex(A,1)
-        # cache neighbors and their weights 
-        for u in rowval[nzrange(A,v)]
-            neighs[u] = A[u,v]
-        end
-        # for each neighbor, iterate over neighbors (1-step BFS) and track triangles
-        for u in rowval[nzrange(A,v)]
-            edge_weight = A[u,v]
-            for w in rowval[nzrange(A,u)]
-                if w!=v
-                    possible_tris = edge_weight*A[w,u]
-                    if neighs[w]>0
-                        tri_counts[u] += possible_tris
-                    end
-                    wedge_counts[u] += possible_tris
-                end
-            end
-        end
-        # reset neighbors 
-        for u in rowval[nzrange(A,v)]
-            neighs[u] = 0.0
-        end
-    end
-    return tri_counts,wedge_counts
-end
-
-A = pairwise_proj(graphs[1])
-
-dropzeros!(A)
-unique(A.nzval)
-
-G = SimpleGraph(A)
-local_clustering_coefficient(G)
-tri,weds = multigraph_triangles(A)
-
-norm(tri./weds .- local_clustering_coefficient(G))
-norm(Graphs.triangles(G)*2-tri)
-
-Graphs.triangles(G)./local_clustering_coefficient(G)
-weds
-
-
-A = sparse([0 0 0 1; 0 0 0 1; 0 0 0 1;1 1 1 0])
-multigraph_triangles(A)
-Graphs.triangles(SimpleGraph(A))
+# A = sparse([0 2 4;2 0 2;4 2 0])
+# t,w = multigraph_clustering_optimized(A)
+# norm(t.-[2,4,2])==0
+# norm(w .- [8,4,8])==0

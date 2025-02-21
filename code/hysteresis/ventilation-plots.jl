@@ -73,16 +73,21 @@ function load_epidemic_data(data_dir,fname;excluded=[],truncate=false,ntruncate=
             if linecount%100==0
                 println("LOADED INFO FOR $linecount EPIDEMICS")
             end
-            obj = JSON3.read(line)
-            for k in keys(obj)
-                key = string(k)
-                if !(key in excluded)
-                    if truncate && typeof(obj[key])<:JSON3.Array
-                        push!(data[key],obj[key][end-ntruncate:end])
-                    else
-                        push!(data[key],obj[key])
+            try
+                obj = JSON3.read(line)
+                for k in keys(obj)
+                    key = string(k)
+                    if !(key in excluded)
+                        if truncate && typeof(obj[key])<:JSON3.Array
+                            push!(data[key],obj[key][end-ntruncate:end])
+                        else
+                            push!(data[key],obj[key])
+                        end
                     end
                 end
+            catch e
+                # skip that row due to an error in parsing JSON
+                println("Skipping row $linecount due to error: $e")
             end
         end
     end
@@ -118,19 +123,23 @@ function load_epidemic_data_reduce(data_dir,fname,reduce_func;excluded=[],trunca
             if linecount%100==0
                 println("LOADED INFO FOR $linecount EPIDEMICS")
             end
-            obj = JSON3.read(line)
-            for k in keys(obj)
-                key = string(k)
-                if !(key in excluded || key in reduce_keys)
-                    if truncate && typeof(obj[key])<:JSON3.Array 
-                        push!(data[key],obj[key][end-ntruncate:end])
-                    else
-                        push!(data[key],obj[key])
+            try 
+                obj = JSON3.read(line)
+                for k in keys(obj)
+                    key = string(k)
+                    if !(key in excluded || key in reduce_keys)
+                        if truncate && typeof(obj[key])<:JSON3.Array 
+                            push!(data[key],obj[key][end-ntruncate:end])
+                        else
+                            push!(data[key],obj[key])
+                        end
+                    elseif key in reduce_keys
+                        # load it in, reduce and push reduced output to 
+                        push!(data[key],reduce_func(obj[key]))
                     end
-                elseif key in reduce_keys
-                    # load it in, reduce and push reduced output to 
-                    push!(data[key],reduce_func(obj[key]))
                 end
+            catch e
+                println("Skipping row $linecount due to error: $e")
             end
         end
     end
@@ -154,10 +163,14 @@ end
 
 # Example usage
 function plot_hysteresis(data_dir, fname)
-    data = load_epidemic_data(data_dir,fname,excluded = ["ntransmissions_hyperedge","ninfected_hyperedge"])
+    data = load_epidemic_data(data_dir,fname,
+                                excluded = ["ntransmissions_hyperedge","ninfected_hyperedge"],
+                                truncate=true,
+                                ntruncate=1000,
+                            )
 
     # group data by starting condition, beta, and hyper_beta_func
-    filtered_data = hcat(data["beta"], data["hyper_beta_func"], data["infections"])
+    filtered_data = hcat(data["beta"], data["hyper_beta_func"], data["initial_num_infected_nodes"])
     grouped_inds = group_by_function(x -> (x[1], x[2], x[3]), eachrow(filtered_data))
     grouped_rolling_averages = Dict(k => rolling_average(data["infections"][grouped_inds[k], :], 1000) for k in keys(grouped_inds))
 
@@ -165,6 +178,7 @@ function plot_hysteresis(data_dir, fname)
     static_keys = sort(collect(keys(grouped_rolling_averages)))
     linear_keys = [k for k in static_keys if k[2] == "linear"]
     sqrt_keys = [k for k in static_keys if k[2] == "sqrt"]
+    pairwise_keys = [k for k in static_keys if k[2] == "pairwise"]
 
     beta_vals = unique(first.(linear_keys))
     beta_map = Dict(map(x -> (x[2], x[1]), enumerate(sort(beta_vals))))
@@ -185,7 +199,7 @@ function plot_hysteresis(data_dir, fname)
         Plots.plot!(f,xscale=:log10)
     end
 
-    return _plot_keys(linear_keys, "Linear"),_plot_keys(sqrt_keys, "Sqrt"), _plot_keys([k for k in static_keys if k[2] == "pairwise"], "Pairwise")
+    return _plot_keys(linear_keys, "Linear"),_plot_keys(sqrt_keys, "Sqrt"), _plot_keys(pairwise_keys, "Pairwise")
 end
 
 ################################
@@ -193,10 +207,11 @@ end
 ################################
 # Example usage
 # data_dir = "data/hysteresis/sirs/"
-# fname = "spatial-hypergraph-50000-5-0.0-1.jsonl"
-# f1,f2 = plot_hysteresis(data_dir, fname)
-# f1
-# f2
+# fname = "spatial-hypergraph-5000-2-2.0-1-newalpha.jsonl"
+# f1,f2,f3 = plot_hysteresis(data_dir, fname)
+# display(f1)
+# display(f2)
+# display(f3)
 
 ### 
 # fs = []
@@ -308,33 +323,35 @@ end
 #############################
 # average over dicts 
 function average_over_dicts(vec_of_dicts::Vector{Dict})
-    mydict = Dict{Any,Float64}()
+    # take sum over all dicts 
+    s_dict = Dict{Any,Float64}()
     for dict in vec_of_dicts
         for key in keys(dict)
-            mydict[key] = get(mydict,key,0)+dict[key]
+            s_dict[key] = get(s_dict,key,0)+dict[key]
         end
     end
     nitems = lastindex(vec_of_dicts)
-    for key in keys(mydict)
-        mydict[key] = mydict[key]/nitems
+    for key in keys(s_dict)
+        s_dict[key] = s_dict[key]/nitems
     end
-    return mydict
+    return s_dict
 end
 
-function dictionary_rolling_average(vec_of_dicts::S, window::Int)::Dict where S
+# not really a traililng average... technically this truncates and takes an average.
+# should just add a truncation parameter to 'average_over_dicts' function above
+function dictionary_trailing_average(vec_of_dicts::S, window::Int)::Dict where S
     # build a dict to track sum prior to average 
-    rolling_avgs = Dict{Any, Float64}()
+    trailing_avgs = Dict{Any, Float64}()
     for dict in vec_of_dicts[end-window:end]
         for (key,val) in pairs(dict)
-            rolling_avgs[key] = get(rolling_avgs,key,0)+val
+            trailing_avgs[key] = get(trailing_avgs,key,0)+val
         end
     end
     
-    nitems = lastindex(vec_of_dicts)-window+1
-    for key in keys(rolling_avgs)
-        rolling_avgs[key] = rolling_avgs[key]/nitems
+    for key in keys(trailing_avgs)
+        trailing_avgs[key] = trailing_avgs[key]/window
     end
-    return rolling_avgs
+    return trailing_avgs
 end
 
 function rolling_hyperedge_stats(data,hyperedge_key="ntransmissions_hyperedge",stream=false)
@@ -342,12 +359,12 @@ function rolling_hyperedge_stats(data,hyperedge_key="ntransmissions_hyperedge",s
     filtered_data = hcat(data["beta"], data["hyper_beta_func"])
     grouped_inds = group_by_function(x -> (x[1],x[2]), eachrow(filtered_data))
     # compute rolling averages for each trajectory/simulation and average over group size 
-    println("Computing rolling averages...")
+    println("Computing averages...")
     newdata = Dict()
     for (key,inds) in pairs(grouped_inds)
         # for original data 
         if !stream
-            rolling_avgs = map(ind->dictionary_rolling_average(data[hyperedge_key][ind],1000),inds)
+            rolling_avgs = map(ind->dictionary_trailing_average(data[hyperedge_key][ind],1000),inds)
             group_rolling_avg = average_over_dicts(rolling_avgs)
         else
             group_rolling_avg = average_over_dicts(data[hyperedge_key][inds])
@@ -355,21 +372,17 @@ function rolling_hyperedge_stats(data,hyperedge_key="ntransmissions_hyperedge",s
         newdata[key] = group_rolling_avg
     end
 
-    # key set up 
-    static_keys = collect(keys(newdata))
-    linear_keys = [key for key in static_keys if key[2]=="linear"]
-    sqrt_keys = [key for key in static_keys if key[2]=="sqrt"]
+    # get max hyperedge size 
     hyperedge_keys = string.(keys(newdata[first(keys(newdata))]))
-    ymin,ymax = extrema(parse.(Int,hyperedge_keys))
+    hmin,hmax = extrema(parse.(Int,hyperedge_keys))
     
     beta_vals = sort(unique(data["beta"]))
-    # fs = []
     pdata = Dict()
     for hyper_beta_func in unique(data["hyper_beta_func"])
         # main plotting setup 
-        plotting_data = zeros(Float64,ymax,lastindex(beta_vals))
+        plotting_data = zeros(Float64,hmax,lastindex(beta_vals))
         for (i,beta) in enumerate(beta_vals)
-            dict = newdata[(beta,hyper_beta_func)] # filter to linear 
+            dict = newdata[(beta,hyper_beta_func)] # filter to hyper_beta_func 
             for key in keys(dict)
                 plotting_data[parse(Int,string(key)),i] = dict[key]
             end
@@ -383,7 +396,7 @@ end
 function hypergraph_stats_data(data_dir,fname,stream=false)
     # load data 
     if stream 
-        data = load_epidemic_data_reduce(data_dir,fname,x->dictionary_rolling_average(x,1000))
+        data = load_epidemic_data_reduce(data_dir,fname,x->dictionary_trailing_average(x,1000),truncate=true,ntruncate=1000)
     else
         data = load_epidemic_data(data_dir,fname)    
     end
@@ -392,9 +405,21 @@ function hypergraph_stats_data(data_dir,fname,stream=false)
     for hyperkey in ["ntransmissions_hyperedge","ninfected_hyperedge"]
         output = rolling_hyperedge_stats(data,hyperkey,stream)
         pdata[hyperkey] = output 
-        # push!(figs,f1)
-        # push!(figs,f2)
     end
+    # handle infections 
+    filtered_data = hcat(data["beta"], data["hyper_beta_func"])
+    grouped_inds = group_by_function(x -> (x[1], x[2]), eachrow(filtered_data))
+    rolling_avg_infections = Dict(k => rolling_average(data["infections"][grouped_inds[k], :], 1000) for k in keys(grouped_inds))
+
+    static_keys = collect(keys(rolling_avg_infections))
+    regrouped_keys = group_by_function(x->x[2], static_keys)
+    infs_dict = Dict()
+    for key in keys(regrouped_keys)
+        sorted_betas = sort(static_keys[regrouped_keys[key]])
+        infs_dict[key] = [rolling_avg_infections[x] for x in sorted_betas]
+    end
+     
+    pdata["infections"] = infs_dict
     return pdata
 end
 
@@ -485,47 +510,16 @@ beta_vals = vcat(1e-3:1e-3:1e-2, 2e-2:1e-2:1e-1, 2e-1:1e-1:9e-1)
 beta_vals = sort(unique(beta_vals))
 
 base_graph_names = [
-    # "spatial-hypergraph-5000-2",
-    # "spatial-hypergraph-5000-5",
+    "spatial-hypergraph-5000-2",
+    "spatial-hypergraph-5000-5",
     # larger 
-    # "spatial-hypergraph-50000-2",
+    "spatial-hypergraph-50000-2",
     "spatial-hypergraph-50000-5"
 ]
-for base_graph in base_graph_names
-# base_graph = "spatial-hypergraph-50000-2"
-    graph_names = map(x->"$(splitext(basename(x))[1]).jsonl",get_fnames(base_graph))
 
-    start_time = time()
-    pdata = Dict()
-    for fname in graph_names #smaller graph 
-        alpha_val = parse(Float64,split(fname,"-")[5])
-        
-        out = hypergraph_stats_data(data_dir,fname,true)
-        pdata[alpha_val] = out
-    end
-    end_time = time()
-    println("PLOTTING DATA GENERATED IN $(end_time-start_time) SECONDS")
-
-    # flatten data
-    newdata = Dict()
-    for (key1, val1) in pdata
-        for (key2, val2) in val1
-            for (key3, val3) in val2
-                newdata[(key1, key2, key3)] = deepcopy(val3)
-            end
-        end
-    end
-
-    max_size = maximum(size.(values(newdata),1))
-    for (key,val) in pairs(newdata)
-        newdata[key] = _pad_matrix(val,max_size)
-    end
-
-
+function get_hypergraph_info(fnames,max_size)
     hypergraph_info = Dict()
-    for gname in graph_names #smaller graph 
-        fname = get_fnames(splitext(gname)[1])[1]
-        
+    for fname in fnames     
         node_coverage,edge_coverage = hyperedge_information(fname)
         node_coverage = repeat(node_coverage,outer = (1,lastindex(beta_vals)))
         node_coverage = _pad_matrix(node_coverage,max_size)
@@ -538,151 +532,314 @@ for base_graph in base_graph_names
         gdict["edge_coverage"] = edge_coverage
         hypergraph_info[alph] = gdict
     end
+    return hypergraph_info 
+end
 
-    for col_norm in [true, false]
-        figs=make_transmission_heatmaps(newdata,hypergraph_info,col_norm)
+base_graph_names
+gnames = get_fnames(base_graph_names[1],"newalpha")
 
-        # alpha_vals = sort(collect(keys(hypergraph_info)))
-        # for alph in alpha_vals
-        #     f = figs[(alph, "ntransmissions_hyperedge", "linear")]
-        #     Plots.display(f)
-        # end
-        for key in collect(keys(figs))
-            alph,hyperedge_key,normalization = key
-            f = figs[key]
-            Plots.plot!(f,dpi=1000)
+# load cached data dict 
+data_dir = "data/hysteresis/figures/"
+fnames = [
+    "spatial-hypergraph-50000-2-aggregated_data.json",
+    "spatial-hypergraph-50000-5-aggregated_data.json",
+    "spatial-hypergraph-5000-2-aggregated_data.json",
+    "spatial-hypergraph-5000-5-aggregated_data.json",
+]
 
-            fig_name = "$hyperedge_key-$base_graph-$alph-$normalization"
-            if col_norm
-                fig_name = "$fig_name-max_normalized"
-            end
-            Plots.savefig(f,joinpath(figure_path,"$fig_name.pdf"))
-            Plots.savefig(f,joinpath(figure_path,"$fig_name.png"))
-        end
+fname = fnames[3]
+base_graph = String(first(split(fname,"-aggregated_data")))
+graphs = get_fnames(base_graph,"newalpha")
+
+# Read the JSON file as a string
+json_string = read(joinpath(data_dir,fname), String)
+# Parse the JSON string
+agg_inf_data = JSON3.read(json_string)
+
+function parse_key(key::Symbol)
+    # Convert the symbol to a string and remove the outer parentheses
+    str = String(key)[2:end-1]
+    
+    # Split the string by comma and space
+    parts = split(str, ", ")
+    
+    # Parse the float
+    float_val = parse(Float64, parts[1])
+    
+    # Remove the quotes from the strings
+    string1 = parts[2][2:end-1]
+    string2 = parts[3][2:end-1]
+    
+    # Return the tuple
+    return (float_val, String(string1), String(string2))
+end
+
+# Example usage:
+# key = Symbol("(0.42857142857142855, \"ninfected_hyperedge\", \"linear\")")
+# result = parse_key(key)
+# println(result)  # Output: (0.42857142857142855, "ninfected_hyperedge", "linear")
+# println(typeof(result))  # Output: Tuple{Float64, String, String}
+agg_inf_data = Dict(parse_key(k)=>Array(agg_inf_data[k]) for k in keys(agg_inf_data))
+hyperedge_keys = [x for x in keys(agg_inf_data) if occursin("hyperedge",x[2])]
+# reshape infection data 
+max_hyperedge_size = 0
+for key in hyperedge_keys    
+    max_hyperedge_size = max(max_hyperedge_size,Int(size(agg_inf_data[key],1)/length(beta_vals)))
+end
+mat_shape = (max_hyperedge_size,length(beta_vals))
+
+h_inf_data = Dict{Tuple,Array}()
+for key in keys(agg_inf_data)
+    if key in hyperedge_keys
+        h_inf_data[key] = reshape(agg_inf_data[key],mat_shape)
+        # remove key for inf data 
+        delete!(agg_inf_data,key)
     end
 end
 
-#= 
-keys(figs)
-function myplot_touchup(figs)
-    fs = deepcopy(figs)
-    l = @layout [grid(2, 3, widths=[0.31, 0.31, 0.38])]
-    transmission_fig = Plots.plot(
-        fs[(0.0,"ntransmissions_hyperedge","linear")],
-        fs[(1.0,"ntransmissions_hyperedge","linear")],
-        fs[(2.0,"ntransmissions_hyperedge","linear")],
-        fs[(0.0,"ntransmissions_hyperedge","sqrt")],
-        fs[(1.0,"ntransmissions_hyperedge","sqrt")],
-        fs[(2.0,"ntransmissions_hyperedge","sqrt")],
-        layout = l,
-        size=(2000,800)
-    )
+# compute hyperedge information 
+hypergraph_info = get_hypergraph_info(graphs,max_hyperedge_size)
+# rebuild heatmaps (as test)
+# figs = make_transmission_heatmaps(agg_inf_data,hypergraph_info,true)
+# figs[2.0,"ntransmissions_hyperedge","pairwise"]
+# plot the relationship we care about 
 
-    #remove cbar 
-    for i in [1,2,4,5]
-        Plots.plot!(transmission_fig[i],cbar=false)
-    end
-    # remove xlabel from first row 
-    for i in [1,2,3]
-        Plots.plot!(transmission_fig[i],xlabel="")
-    end
-    # remove ylabels 
-    for i in [2,3,5,6]
-        Plots.plot!(transmission_fig[i],ylabel="")
-    end
-    # adjust margins 
-    Plots.plot!(transmission_fig[4],bottom_margin=8mm,left_margin=14mm)
-    Plots.plot!(transmission_fig[1],top_margin=5mm)
-    Plots.plot!(transmission_fig, plot_title="Node-Coverage Normalized Transmissions", plot_titlefontsize=20,
-            dpi=2000)
-    return transmission_fig
-end
-
-
-myplot_touchup(figs)
-
-figs=make_transmission_heatmaps(newdata,hypergraph_info,true)
-myplot_touchup(figs)
-
-figs[(2.0, "ntransmissions_hyperedge", "linear")]
-figs[(1.0, "ntransmissions_hyperedge", "linear")]
-figs[(0.0, "ntransmissions_hyperedge", "linear")]
-
-Plots.plot(figs[(2.0, "ntransmissions_hyperedge", "linear")],clims=(-3,4))
-Plots.plot(figs[(1.0, "ntransmissions_hyperedge", "linear")],clims=(-3,4))
-Plots.plot(figs[(0.0, "ntransmissions_hyperedge", "linear")],clims=(-3,4))
-
-
-
-
-##########################
-## Individual Trajectories
-########################## 
-function single_trajectory_hyperedge_transmissions(data,beta=5e-2,hyper_beta_func="linear",initial_num_infected_nodes=2500)
-    filtered_data = hcat(data["beta"], data["hyper_beta_func"], data["infections"])
-    grouped_inds = group_by_function(x -> (x[1],x[2],x[3]), eachrow(filtered_data))
-    # grab the group of inds 
-    inds = grouped_inds[(beta,hyper_beta_func,initial_num_infected_nodes)]
-
-    # vec_vec_of_dicts = data["ntransmissions_hyperedge"][inds]
-
-    all_keys = Set()
-    for ind in inds 
-        for dict in data["ntransmissions_hyperedge"][ind]
-            union!(all_keys,keys(dict))
+# bin the data into coarser bins 
+function _custom_heatmap(pdata)
+    # function to bin rows of the heatmap weight matrix
+    function _bin_indices(bins::Vector, pdata::Vector)
+        bin_dict = Dict{Float64, Vector{Int}}()
+        for i in 1:length(bins)-1
+            bin_dict[bins[i]] = findall(x -> bins[i] <= x < bins[i+1], pdata)
         end
+        bin_dict[bins[end]] = findall(x -> bins[end] <= x, pdata)
+        return bin_dict
     end
-    ymin,ymax = extrema(parse.(Int,all_keys))
-
-    fs = []
-    for (i,ind) in enumerate(inds)
-        plotting_data = zeros(Float64,ymax,lastindex(data["ntransmissions_hyperedge"][ind]))
-        for (timestep,dict) in enumerate(data["ntransmissions_hyperedge"][ind])
-            for key in keys(dict)
-                plotting_data[parse(Int,key),timestep] = dict[key]
+    
+    function _log_bin_ydata(pdata,ybins)
+        binned_inds = _bin_indices(ybins,collect(1:lastindex(pdata,1)))
+        new_mat = zeros(Float64,lastindex(ybins)-1,lastindex(pdata,2))
+        for (newrow,key) in enumerate(ybins[1:end-1])
+            old_rows = binned_inds[key]
+            # account for nan values occuring in different rows/cols in sum 
+            for col=1:lastindex(pdata,2)
+                tmp = @view pdata[old_rows,col]
+                # get non-nan values and sum 
+                inds = (!).(isnan.(tmp))
+                if length(inds)>0
+                    new_mat[newrow,col] = sum(tmp[inds])
+                end
+                # new_mat[newrow,:] = sum(x->!isnan(x),pdata[old_rows,:],dims=1)
             end
         end
-        f = heatmap(plotting_data,clims=(1,20),
+        return new_mat
+    end
+    
+    max_hsize = lastindex(pdata,1)
+    ybins = (10.0).^(range(1,log10(max_hsize+10),21))
+    ybins = vcat(1:9,ybins)
+    ybins = sort(unique(ybins))
+
+    new_mat = _log_bin_ydata(pdata,ybins)
+    # renormalize columns
+    new_mat = mapslices(x -> x ./ maximum(x[(!).(isnan.(x))]), new_mat, dims=1)
+    # yvals = [mean(ybins[i:i+1]) for i=1:lastindex(ybins)-1]
+    # xrange, yrange, data_matrix, yaxis scale
+    f = Plots.heatmap(1:lastindex(new_mat,2), ybins[1:end-1], log10.(new_mat),
+    # f = Plots.heatmap(1:lastindex(new_mat,2), yvals, log10.(new_mat),
                 yscale=:log10,
-                title = "beta: $beta, norm: $hyper_beta_func, initial infs: $initial_num_infected_nodes, trial: $i",
-                xlabel="Time Step",
-                ylabel="Transmissions by Hypergraph Size")
-        push!(fs,f)
+                color=:viridis,
+                clims=(-5,0),
+                )
+    return f#,new_mat,ybins 
+end
+
+function new_transmission_heatmaps(data_dict,hyperedge_dict,column_normalization=false)
+    fig_dict = Dict()
+    for (key,plotting_data) in pairs(data_dict)
+        alpha,hyperkey,hyper_beta_func = key
+        curr_plotting_data = deepcopy(plotting_data)
+
+        beta_tick_map = Dict(reverse.(enumerate(beta_vals)))
+        ticks = (vcat([beta_tick_map[x] for x in [1e-3,1e-2,1e-1]],lastindex(beta_vals)) ,["1e-3","1e-2","1e-1","1e0"])
+        if hyperkey == "ntransmissions_hyperedge"
+            mylabel = "Rolling Average Transmission\n by Hyperedge Size"
+        elseif hyperkey == "ninfected_hyperedge"
+            mylabel = "Rolling Average Infection\n by Hyperedge Size"
+            # recorded sum_v sum_{h: v\in h} (number of infected nodes adjacent to v) 
+            # this overcounts by |h|-1 for each hyperedge (split into inf and not inf and count)
+            curr_plotting_data = mapslices(x->x./(0:lastindex(x)-1),curr_plotting_data,dims=1)
+        end
+        
+        hinfo = deepcopy(hyperedge_dict[alpha]["node_coverage"])
+        nnodes = hyperedge_dict[0.0]["node_coverage"][2,2] # node coverage by pairwise in pairwise 
+        hinfo = mapslices(x->x./nnodes,hinfo,dims=1)
+        curr_plotting_data ./= hinfo
+
+        if column_normalization
+            curr_plotting_data = mapslices(x -> x ./ maximum(x[(!).(isnan.(x))]), curr_plotting_data, dims=1)
+            # removes portions of the heatmap with no data
+            curr_plotting_data = (10.0).^log10.(curr_plotting_data)
+        # else
+        #     curr_plotting_data = 1 .+log10.(curr_plotting_data)
+        end
+        
+        f = _custom_heatmap(curr_plotting_data)
+        Plots.plot!(f,
+                cmap=:viridis,
+                ylims=(0.9,size(curr_plotting_data,1)+10),
+                xticks = ticks,
+                xlabel = "Pairwise Infection Probability",
+                ylabel = mylabel,
+                title="Alpha:$alpha Norm: $hyper_beta_func"
+        )
+        fig_dict[key] = f
     end
-         
-    return fs
+    return fig_dict
 end
 
-# trajectory figures 
-fs = single_trajectory_hyperedge_transmissions(data,1e-1,"sqrt",2500)
-for f in fs
-    plot!(f,title="$fname\n$(f[1][:title])",
-        top_margin=2mm)
+# new_figs = new_transmission_heatmaps(agg_inf_data, hypergraph_info)
+# new_figs[(2.0,"ntransmissions_hyperedge","sqrt")]
+
+function node_normalized_stats(inf_dict, hypergraph_dict)
+    new_inf_dict = deepcopy(inf_dict)
+    for key in keys(new_inf_dict)
+        alpha,hyperkey,hyper_beta_func = key
+        curr_data = new_inf_dict[key]
+        if hyperkey == "ninfected_hyperedge"
+            # recorded sum_v sum_{h: v\in h} (number of infected nodes adjacent to v) 
+            # this overcounts by |h|-1 for each hyperedge (split into inf and not inf and count)
+            curr_data = mapslices(x->x./(0:lastindex(x)-1),curr_data,dims=1)
+        end
+
+        hinfo = deepcopy(hypergraph_dict[alpha]["node_coverage"])
+        nnodes = hypergraph_dict[0.0]["node_coverage"][2,2] # node coverage by pairwise in pairwise 
+        hinfo = mapslices(x->x./nnodes,hinfo,dims=1)
+        new_inf_dict[key] ./= hinfo
+    end
+    return new_inf_dict
 end
 
-for i=1:min(lastindex(fs),5)
-    # save figure 
-    plot!(fs[i],dpi=1000)
-    savefig(fs[i],joinpath(figure_path,"hyperedge_transmissions-trajectory_$i-$(splitext(fname)[1]).png"))
-    savefig(fs[i],joinpath(figure_path,"hyperedge_transmissions-trajectory_$i-$(splitext(fname)[1]).pdf"))
+function nanfindmax(x::Vector)
+    inds = (!).(isnan.(x))
+    y = x[inds]
+    maxval,maxind = findmax(y)
+    new_inds = cumsum(inds) # index in the filtered data
+    return findfirst(new_inds.==maxind)
+end
+nn_h_inf_data = node_normalized_stats(h_inf_data,hypergraph_info)
+
+# tmp = deepcopy(nn_h_inf_data[(2.0,"ntransmissions_hyperedge","sqrt")])
+# tmp = mapslices(x -> x ./ maximum(x[(!).(isnan.(x))]), tmp, dims=1)
+# # removes portions of the heatmap with no data
+# tmp = (10.0).^log10.(tmp)
+# f = _custom_heatmap(tmp)
+
+
+####### PLOTS #############
+function make_transmission_plots(nn_h_inf_data,agg_inf_data)
+    for hyper_beta_func in ["pairwise","linear","sqrt"]
+        for hyper_stat in ["ntransmissions_hyperedge","ninfected_hyperedge"]
+
+        end
+    end
+end
+# hyper_beta_func = "pairwise"
+# hyper_stat = "ntransmissions_hyperedge"
+
+function beta_hyperstat_plot(nn_h_inf_data,hyper_stat,hyper_beta_func)
+    f = Plots.plot(xlabel=L"\beta", ylabel="Hyperedge Size",
+        title = "$hyper_stat\n$hyper_beta_func normalization")
+    for (ind,alph) in enumerate(range(0,2,15))    
+        tmp = deepcopy(nn_h_inf_data[(alph,hyper_stat,hyper_beta_func)])
+        Plots.plot!(f, beta_vals,vec(mapslices(x -> nanfindmax(x), tmp, dims=1)),
+                yscale=:log10,
+                xscale=:log10,
+                c=1, linewidth=1.2, leg = false, 
+                alpha=exp(alph)/exp(2))
+    end
+    return f
 end
 
-# f = rolling_hyperedge_transmissions(data)
-# title!(f,fname)
-# plot!(f,dpi=1000)
-# savefig(f,joinpath(figure_path,"rolling_hyperedge_transmissions-$(splitext(fname)[1]).png"))
-# savefig(f,joinpath(figure_path,"rolling_hyperedge_transmissions-$(splitext(fname)[1]).pdf"))
-
-# fname = "spatial-hypergraph-5000-5-0.0-1_results.jsonl"
-# data_dir = "data/hysteresis/sirs/"
-# data = load_epidemic_data(data_dir,fname)
-
-# fname
-# data
+using CairoMakie
+using LaTeXStrings
 
 
-# test on small data set 
-data_dir = "data/hysteresis/sirs/"
-fname = "spatial-hypergraph-50000-5-1.8571428571428572-1.jsonl"
-tmp = load_epidemic_data_reduce(data_dir,fname,x->dictionary_rolling_average(x,1000));
-=#
+beta_hyperstat_plot(nn_h_inf_data,"ntransmissions_hyperedge","linear")
+beta_hyperstat_plot(nn_h_inf_data,"ntransmissions_hyperedge","sqrt")
+beta_hyperstat_plot(nn_h_inf_data,"ntransmissions_hyperedge","pairwise")
+
+
+function alpha_hyperstat_plot(nn_h_inf_data,hyper_stat,hyper_beta_func)
+    f = Plots.plot(xlabel=L"\alpha", ylabel="Hyperedge Size",
+        title = "$hyper_stat\n$hyper_beta_func normalization")
+    for (ind,beta) in enumerate(beta_vals)    
+        a_data = reduce(hcat,[nn_h_inf_data[(a,hyper_stat,hyper_beta_func)][:,ind] for a in range(0,2,15)])
+        transparency_range = 4
+        Plots.plot!(f, range(0,2,15),vec(mapslices(x -> nanfindmax(x), a_data, dims=1)),
+                yscale=:log10,    
+                c=3, linewidth=1.8, leg = false,
+                alpha = exp(ind/transparency_range)/exp(length(beta_vals)/transparency_range)
+            )         
+    end
+    f
+
+end
+
+alpha_hyperstat_plot(nn_h_inf_data,"ntransmissions_hyperedge","linear")
+alpha_hyperstat_plot(nn_h_inf_data,"ntransmissions_hyperedge","sqrt")
+alpha_hyperstat_plot(nn_h_inf_data,"ntransmissions_hyperedge","pairwise")
+
+
+using CairoMakie
+using LaTeXStrings
+
+function alpha_hyperstat_plot(nn_h_inf_data, hyper_stat, hyper_beta_func)
+    fig = Figure(resolution = (800, 600))
+    ax = Axis(fig[1, 1],
+        xlabel = L"\alpha",
+        ylabel = "Hyperedge Size",
+        title = "$hyper_stat\n$hyper_beta_func normalization",
+        yscale = log10)
+
+    alpha_range = range(0, 2, 15)
+    transparency_range = 4
+    colors = cgrad(:viridis, length(beta_vals), categorical=true)
+
+    for (ind, beta) in enumerate(beta_vals)
+        a_data = reduce(hcat, [nn_h_inf_data[(a, hyper_stat, hyper_beta_func)][:, ind] for a in alpha_range])
+        
+        lines!(ax, alpha_range, vec(mapslices(x -> nanfindmax(x), a_data, dims=1)),
+            # color = (:blue, exp(ind/transparency_range)/exp(length(beta_vals)/transparency_range)),
+            color = colors[ind],
+            linewidth = 1.8)
+    end
+
+    return fig
+end
+
+alpha_hyperstat_plot(nn_h_inf_data,"ntransmissions_hyperedge","sqrt")
+
+# alpha_hyperstat_plot(nn_h_inf_data,"ninfected_hyperedge","linear")
+# alpha_hyperstat_plot(nn_h_inf_data,"ninfected_hyperedge","sqrt")
+# alpha_hyperstat_plot(nn_h_inf_data,"ninfected_hyperedge","pairwise")
+
+
+# fix beta and look at total infections across alpha 
+function total_infections(agg_inf_data,beta,hyper_beta_func)
+    ind_to_beta = Dict(enumerate(beta_vals))
+    beta_to_ind = Dict(k=>v for (v,k) in pairs(ind_to_beta))
+
+    ind = beta_to_ind[beta]
+
+    a_data = [agg_inf_data[(a,"infections",hyper_beta_func)][ind] for a in range(0,2,15)]
+    f = Plots.plot(range(0,2,15),a_data,leg=false,linewidth=2.0,
+            xlabel=L"\alpha",
+            ylabel="Total Infections",
+            title="$hyper_beta_func normalization")
+    
+    return f 
+end
+
+total_infections(agg_inf_data,5e-2,"sqrt")
+
