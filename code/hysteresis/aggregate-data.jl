@@ -4,9 +4,13 @@ using Measures
 using StatsBase
 using JSON 
 using JSON3
-using ProgressMeter
+using ProgressMeter 
 
 println("LOADING IN TOOLS...")
+# screen 
+# include("code/data-io.jl")
+# include("code/hypergraph-tools.jl")
+# REPL 
 include("../data-io.jl")
 include("../hypergraph-tools.jl")
 
@@ -279,6 +283,59 @@ base_graph_names = [
     "spatial-hypergraph-50000-5"
 ]
 
+# for base_graph in base_graph_names
+#     graph_names = map(x->"$(splitext(basename(x))[1]).jsonl",get_fnames(base_graph))
+#     filter!(x->occursin("newalpha.jsonl",x),graph_names)
+
+#     println("ALL GRAPHS..")
+#     for x in graph_names
+#         println(x)
+#     end
+#     start_time = time()
+#     pdata = Dict()
+#     for fname in graph_names #smaller graph 
+#         alpha_val = parse(Float64,split(fname,"-")[5])
+        
+#         out = hypergraph_stats_data(data_dir,fname,true)
+#         pdata[alpha_val] = out
+#     end
+#     end_time = time()
+#     println("PLOTTING DATA GENERATED IN $(end_time-start_time) SECONDS")
+
+#     # flatten data
+#     newdata = Dict()
+#     for (key1, val1) in pdata
+#         for (key2, val2) in val1
+#             for (key3, val3) in val2
+#                 newdata[(key1, key2, key3)] = deepcopy(val3)
+#             end
+#         end
+#     end
+
+#     max_size = maximum(size.(values(newdata),1))
+#     for (key,val) in pairs(newdata)
+#         if key != "infections"
+#             newdata[key] = _pad_matrix(val,max_size)
+#         end
+#     end
+
+#     # write newdata to a file 
+#     # Write newdata dictionary to a JSON file
+#     output_file = joinpath(figure_path, "$(base_graph)-aggregated_data.json")
+#     open(output_file, "w") do file
+#         JSON3.write(file, newdata)
+#     end
+# end
+
+
+base_graph_names = [
+    # "spatial-hypergraph-5000-2",
+    # "spatial-hypergraph-5000-5",
+    # larger 
+    "spatial-hypergraph-50000-2",
+    # "spatial-hypergraph-50000-5"
+]
+RAW_DATA = Dict()
 for base_graph in base_graph_names
     graph_names = map(x->"$(splitext(basename(x))[1]).jsonl",get_fnames(base_graph))
     filter!(x->occursin("newalpha.jsonl",x),graph_names)
@@ -287,38 +344,37 @@ for base_graph in base_graph_names
     for x in graph_names
         println(x)
     end
-    start_time = time()
-    pdata = Dict()
     for fname in graph_names #smaller graph 
-        alpha_val = parse(Float64,split(fname,"-")[5])
-        
-        out = hypergraph_stats_data(data_dir,fname,true)
-        pdata[alpha_val] = out
+        RAW_DATA[fname] = load_epidemic_data_reduce("data/hysteresis/sirs/scratch/",fname,x->dictionary_trailing_average(x,1000),truncate=true,ntruncate=1000)
     end
-    end_time = time()
-    println("PLOTTING DATA GENERATED IN $(end_time-start_time) SECONDS")
+end 
 
-    # flatten data
-    newdata = Dict()
-    for (key1, val1) in pdata
-        for (key2, val2) in val1
-            for (key3, val3) in val2
-                newdata[(key1, key2, key3)] = deepcopy(val3)
-            end
-        end
-    end
+# quick and dirty data 
+varinfo()
 
-    max_size = maximum(size.(values(newdata),1))
-    for (key,val) in pairs(newdata)
-        if key != "infections"
-            newdata[key] = _pad_matrix(val,max_size)
-        end
-    end
+open("aggregated-sirs-output-scratch-v1.json","w") do io
+    JSON3.write(io, RAW_DATA)
+end 
 
-    # write newdata to a file 
-    # Write newdata dictionary to a JSON file
-    output_file = joinpath(figure_path, "$(base_graph)-aggregated_data.json")
-    open(output_file, "w") do file
-        JSON3.write(file, newdata)
+
+# overwrite new graphs 
+# new_graphs = [
+#     "spatial-hypergraph-5000-2",
+#     "spatial-hypergraph-5000-5",
+# ]
+for base_graph in new_graphs
+    graph_names = map(x->"$(splitext(basename(x))[1]).jsonl",get_fnames(base_graph))
+    filter!(x->occursin("newalpha.jsonl",x),graph_names)
+
+    println("ALL GRAPHS..")
+    for x in graph_names
+        println(x)
     end
-end
+    for fname in graph_names 
+        RAW_DATA[fname] = load_epidemic_data_reduce("data/hysteresis/sirs/",fname,x->dictionary_trailing_average(x,1000),truncate=true,ntruncate=1000)
+    end
+end 
+
+open("aggregated-sirs-output-v2.json","w") do io
+    write(io, RAW_DATA)
+end 

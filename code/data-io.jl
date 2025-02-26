@@ -5,9 +5,10 @@ function get_gname(fname::String)
     gname = join(parts[1:end-2],'-')
     return gname
 end
-function get_fnames(gname::String)
+function get_fnames(gname::String,substring="")
     fnames = filter(x->endswith(x,".txt"),readdir("data/hypergraphs/"))
 
+    filter!(x->occursin(substring,x),fnames)
     #filter down to gnames 
     gnames = filter(x->startswith(x,gname),fnames)
     #sort by alpha values 

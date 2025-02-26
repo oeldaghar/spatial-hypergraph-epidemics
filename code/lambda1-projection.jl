@@ -1,58 +1,16 @@
-using Distributions, Clustering, NearestNeighbors
-function hypergraph_edges(X;degreedist,radfunc=(dist,deg) -> dist/sqrt(deg))
-  T = BallTree(X)
-  # form the edges for sparse
-  edges = Vector{Int}[]
-  for i in axes(X,2)
-    #deg = min(ceil(Int,rand(degreedist)),n-1)
-    deg = degreedist[i]
-    idxs, dists = knn(T, X[:,i], deg+1, true)
-    if deg > 1 
-      maxdist = maximum(dists) 
-      pts = @view X[:,idxs]
-      rad = radfunc(maxdist,deg)
-      clusters = dbscan(pts, rad).clusters
-      for c in clusters
-        e = [i]
-        for v in c.core_indices
-          if idxs[v] != i
-            push!(e, idxs[v])
-          end
-        end
-        for v in c.boundary_indices
-          if idxs[v] != i 
-            push!(e, idxs[v])
-          end
-        end
-        if length(e) > 1
-          push!(edges, e)
-        end
-      end
-    else
-      # only one vertex! 
-      push!(edges, [i,idxs[2]])
-    end 
-  end 
-  return edges, X
-end
+using Distributed
+# addprocs(10)
 
-function spatial_hypergraph_edges(n::Integer,d::Integer;kwargs...)
-  X = rand(d,n)
-  return hypergraph_edges(X;kwargs...)
-end
+@everywhere using Distributions, Clustering, NearestNeighbors
+@everywhere using GenericArpack, MatrixNetworks, SparseArrays
+@everywhere using Random, LinearAlgebra
+@everywhere using Random, JSON, ProgressMeter
 
-function get_func(alpha) 
-  if alpha <= 1
-    return (d,deg) -> alpha*d/sqrt(deg)
-  else
-    return (d,deg) -> d/sqrt(deg) + (alpha-1)*(d-d/sqrt(deg))
-  end
-end 
+using Plots
 
-#using Arpack, MatrixNetworks, SparseArrays, LinearMaps
-using GenericArpack, MatrixNetworks, SparseArrays
+@everywhere include("spatial-hypergraph.jl")
 
-function _hypergraph_components(edges)
+@everywhere function _hypergraph_components(edges)
   # compute the bipartite graph for the hypergraph adjacency matrix 
   n = maximum(map(x->maximum(x), edges))
   m = length(edges)
@@ -72,7 +30,7 @@ function _hypergraph_components(edges)
   scc = scomponents(A)
   return length(scc.sizes) # this is the number of connected components
 end 
-function _hypergraph_largest_component(edges)
+@everywhere function _hypergraph_largest_component(edges)
   # compute the bipartite graph for the hypergraph adjacency matrix 
   n = maximum(map(x->maximum(x), edges))
   m = length(edges)
@@ -124,7 +82,7 @@ function _hypergraph_largest_component(edges)
 
   return newedges 
 end 
-function _projected_graph_lam1(edges;scalefunc=x->1/x)
+@everywhere function _projected_graph_lam1(edges;scalefunc=x->1/x)
   n = maximum(map(x->maximum(x), edges))
 
   # create a function to compute A*x where A is the projected graph
@@ -163,7 +121,7 @@ function _projected_graph_lam1(edges;scalefunc=x->1/x)
   return vals[1]
 end
 
-function _project_graph_matrix(edges;scalefunc=x->1/x)
+@everywhere function _project_graph_matrix(edges;scalefunc=x->1/x)
   n = maximum(map(x->maximum(x), edges))
   A = zeros(n,n)
   for e in edges 
@@ -178,45 +136,43 @@ function _project_graph_matrix(edges;scalefunc=x->1/x)
   return A
 end
 
-d = 2
-n = 500
-using Random, LinearAlgebra
-Random.seed!(1234)
-X = rand(d,n)
-degs = min.(ceil.(Int,rand(LogNormal(log(3),1),size(X,2))),size(X,2)-1)
-alphas = range(0,2,length=25)
-graphs = map(alpha -> hypergraph_edges(X;degreedist=degs,radfunc=get_func(alpha))[1], alphas)
+# testing 
+# d = 2
+# n = 250
+# Random.seed!(1234)
+# X = rand(d,n)
+# degs = min.(ceil.(Int,rand(LogNormal(log(3),1),size(X,2))),size(X,2)-1)
+# alphas = range(0,2,length=25)
+# graphs = map(alpha -> hypergraph_edges(X,degs,radfunc=get_func(alpha)), alphas)
 
-function test_lam1_vs_matrix(edges)
-  A = _project_graph_matrix(edges)
-  vals = eigvals(A) 
-  sort!(vals; rev=true, by=abs)
-  lam1 = vals[1] 
-  #@show vals[1:4]
+# function test_lam1_vs_matrix(edges)
+#   A = _project_graph_matrix(edges)
+#   vals = eigvals(A) 
+#   sort!(vals; rev=true, by=abs)
+#   lam1 = vals[1] 
+#   #@show vals[1:4]
 
-  vals2, _ = symeigs(A, 4; which=:LM, maxiter=10000)
-  sort!(vals2; rev=true, by=abs)
+#   vals2, _ = symeigs(A, 4; which=:LM, maxiter=10000)
+#   sort!(vals2; rev=true, by=abs)
 
-  #@show vals2[1:4]
+#   #@show vals2[1:4]
 
-  lam1_matvec = _projected_graph_lam1(edges)
-  return lam1, lam1_matvec
-end 
+#   lam1_matvec = _projected_graph_lam1(edges)
+#   return lam1, lam1_matvec
+# end 
 
-test_lam1_vs_matrix(graphs[2])
+# test_lam1_vs_matrix(graphs[2])
 
-## 
-using Test 
-for (i,g) in pairs(graphs)
-  vals = test_lam1_vs_matrix(g)
-  println("$i: ", vals)
-  @test vals[1] ≈ vals[2]
-end
-
+# ## 
+# using Test 
+# for (i,g) in pairs(graphs)
+#   vals = test_lam1_vs_matrix(g)
+#   println("$i: ", vals)
+#   @test vals[1] ≈ vals[2]
+# end
 
 
 ## Now let's plot the average number of edges...
-using Plots
 function plot_data(trials)
   nedges = reduce(hcat, trials) # now we have alpha as row index and trial as column index
 
@@ -245,28 +201,28 @@ function plot_data(trials)
 end
 
 ## Now I want to project each graph
-using Random, JSON, ProgressMeter
-n = 50000
-d = 2 
+
+@everywhere n = 50000
+@everywhere d = 2 
+@everywhere ntrials = 25 
+@everywhere degreedist = LogNormal(log(3),1)
+@everywhere alphas = range(0,2,length=25)
 random_seed = 1234 
-ntrials = 25 
-degreedist = LogNormal(log(3),1)
 Random.seed!(random_seed)
 seeds = rand(UInt, ntrials )
 
-function run_projected_trial(seed;scalefunc=x->1/x)
+@everywhere function run_projected_trial(seed;scalefunc=x->1/x)
   Random.seed!(seed)
   X = rand(d,n)
   degs = rand(degreedist, n)
   degs = min.(ceil.(Int,degs),n-1)
-  graphs = @showprogress offset=2 desc="Make graphs ..." map(alpha -> hypergraph_edges(X;degreedist=degs, radfunc=get_func(alpha))[1], alphas)
+  graphs = @showprogress offset=2 desc="Make graphs ..." map(alpha -> hypergraph_edges(X, degs, radfunc=get_func(alpha)), alphas)
   nedges = @showprogress offset=2 desc="Eigenvalues ..." map(x->_projected_graph_lam1(_hypergraph_largest_component(x);scalefunc), graphs)
   return nedges   
 end 
 
 ##
-using ProgressMeter
-projected_trials = @showprogress offset=1 desc="Run trials ..." map(x->run_projected_trial(x), seeds)  
+projected_trials = @showprogress offset=1 desc="Run trials ..." pmap(x->run_projected_trial(x), seeds)
 
 ##
 open("spatial_graph_projected_lambda1_$(n)_$(d)_linear.json", "w") do io
@@ -281,7 +237,7 @@ end
 ##
 using LaTeXStrings
 p = plot_data(projected_trials)
-plot!(p, ylabel="Weighted projected λ₁", xlabel="α",size=(300,300))
+Plots.plot!(p, ylabel="Weighted projected λ₁", xlabel="α",size=(300,300))
 p
 
 ##
@@ -289,31 +245,8 @@ savefig(p, "spatial_graph_projected_lambda1_$(n)_$(d)_linear.pdf")
 
 
 
-
 ##
-projected_trials = @showprogress offset=1 desc="Run trials ..." map(x->run_projected_trial(x;scalefunc=x->1/x^2), seeds)  
-
-##
-open("spatial_graph_projected_lambda1_$(n)_$(d)_squared.json", "w") do io
-  output = Dict("n" => n, "d" => d, 
-    "degreedist_mu" => degreedist.μ, "degreedist_sigma" => degreedist.σ,
-    "alphas" => collect(alphas),  "projected_trials" => projected_trials, 
-    "ntrials" => length(projected_trials), "random_seed" => random_seed, 
-    "seeds" => seeds)
-  JSON.print(io, output)
-end
-
-##
-using LaTeXStrings
-p = plot_data(projected_trials)
-plot!(p, ylabel="Weighted projected λ₁", xlabel="α",size=(300,300))
-p
-
-##
-savefig(p, "spatial_graph_projected_lambda1_$(n)_$(d)_squared.pdf")
-
-##
-projected_trials = @showprogress offset=1 desc="Run trials ..." map(x->run_projected_trial(x;scalefunc=x->1/sqrt(x)), seeds)  
+projected_trials = @showprogress offset=1 desc="Run trials ..." pmap(x->run_projected_trial(x;scalefunc=x->1/sqrt(x)), seeds)  
 
 ##
 open("spatial_graph_projected_lambda1_$(n)_$(d)_sqrt.json", "w") do io
@@ -328,8 +261,26 @@ end
 ##
 using LaTeXStrings
 p = plot_data(projected_trials)
-plot!(p, ylabel="Weighted projected λ₁", xlabel="α",size=(300,300))
+Plots.plot!(p, ylabel="Weighted projected λ₁", xlabel="α",size=(300,300))
 p
 
 ##
 savefig(p, "spatial_graph_projected_lambda1_$(n)_$(d)_sqrt.pdf")
+
+## 
+projected_trials = @showprogress offset=1 desc="Run trials ..." pmap(x->run_projected_trial(x;scalefunc=x->1), seeds)  
+##
+open("spatial_graph_projected_lambda1_$(n)_$(d)_pairwise.json", "w") do io
+  output = Dict("n" => n, "d" => d, 
+    "degreedist_mu" => degreedist.μ, "degreedist_sigma" => degreedist.σ,
+    "alphas" => collect(alphas),  "projected_trials" => projected_trials, 
+    "ntrials" => length(projected_trials), "random_seed" => random_seed, 
+    "seeds" => seeds)
+  JSON.print(io, output)
+end
+##
+p = plot_data(projected_trials)
+Plots.plot!(p, ylabel="Weighted projected λ₁", xlabel="α",size=(300,300))
+p
+##
+savefig(p, "spatial_graph_projected_lambda1_$(n)_$(d)_pairwise.pdf")

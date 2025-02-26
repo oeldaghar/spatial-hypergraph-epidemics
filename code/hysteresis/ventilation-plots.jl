@@ -421,7 +421,7 @@ function hypergraph_stats_data(data_dir,fname,stream=false)
      
     pdata["infections"] = infs_dict
     return pdata
-end
+end 
 
 # for padding matricies (for use with heapmaps of different sizes)
 function _pad_matrix(matrix, nrows=100)
@@ -750,13 +750,15 @@ end
 function beta_hyperstat_plot(nn_h_inf_data,hyper_stat,hyper_beta_func)
     f = Plots.plot(xlabel=L"\beta", ylabel="Hyperedge Size",
         title = "$hyper_stat\n$hyper_beta_func normalization")
+    colors = cgrad(:viridis, 15, categorical=true)
     for (ind,alph) in enumerate(range(0,2,15))    
         tmp = deepcopy(nn_h_inf_data[(alph,hyper_stat,hyper_beta_func)])
         Plots.plot!(f, beta_vals,vec(mapslices(x -> nanfindmax(x), tmp, dims=1)),
                 yscale=:log10,
                 xscale=:log10,
-                c=1, linewidth=1.2, leg = false, 
-                alpha=exp(alph)/exp(2))
+                c=colors[ind], linewidth=1.2, leg = false, 
+                # alpha=exp(alph)/exp(2)
+                )
     end
     return f
 end
@@ -789,7 +791,6 @@ end
 alpha_hyperstat_plot(nn_h_inf_data,"ntransmissions_hyperedge","linear")
 alpha_hyperstat_plot(nn_h_inf_data,"ntransmissions_hyperedge","sqrt")
 alpha_hyperstat_plot(nn_h_inf_data,"ntransmissions_hyperedge","pairwise")
-
 
 using CairoMakie
 using LaTeXStrings
@@ -841,5 +842,5 @@ function total_infections(agg_inf_data,beta,hyper_beta_func)
     return f 
 end
 
-total_infections(agg_inf_data,5e-2,"sqrt")
+total_infections(agg_inf_data,1e-2,"sqrt")
 

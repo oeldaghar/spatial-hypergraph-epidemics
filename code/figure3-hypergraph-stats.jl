@@ -223,7 +223,9 @@ function _custom_heatmap(pdata)
     # xrange, yrange, data_matrix, yaxis scale
     f = Plots.heatmap(1:lastindex(new_mat,2),ybins[1:end-1],log10.(new_mat),
                 yscale=:log10,
-                color=:viridis)
+                color=:viridis,
+                clims=(-5,0),
+                )
     return f#,new_mat,ybins 
 end
 

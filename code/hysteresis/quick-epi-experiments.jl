@@ -9,7 +9,7 @@ using JSON3
 @everywhere include("../sirs.jl")
 
 # where files are stored 
-DATA_PATH = "data/hysteresis/sirs/"
+DATA_PATH = "data/hysteresis/sirs/scratch-v2/"
 if !(ispath(DATA_PATH))
     mkpath(DATA_PATH)
 end
@@ -24,14 +24,16 @@ end
 # hyper_beta_func: normalization term to use for hyperedges 
 
 ## ALL PARAMETERS 
-nsamples_per_seeds = 10
-initial_infected_fractions = [0.05, 0.1, 0.15, 0.2, 0.25, 0.5, 0.75, 0.95]
+nsamples_per_seeds = 5
+# initial_infected_fractions = [0.05, 0.1, 0.15, 0.2, 0.25, 0.5, 0.75, 0.95]
+initial_infected_fractions = [0.05, 0.1]#, 0.15] #, 0.2, 0.25]
 # epidemic parameters 
 # beta = vcat(1e-3:1e-3:1e-2, 2e-2:1e-2:1e-1, 2e-1:1e-1:9e-1)
-beta = [0.9]
+beta = [1e-2, 5e-2 ,0.1, 0.4, 0.9]
 # gamma,delta,exo = [5e-2],[1/20],[5/1e6]
-gamma, delta, exo = [0.1], [0.01], [5/1e6] # from the conference paper
-tmax = [365*10]
+gamma, delta, exo = [0.05, 0.1], [0.01, 0.05, 0.1], [5/1e6] # from the conference paper
+# tmax = [365*10]
+tmax = [2000]
 # hyper_beta_func = ["linear","sqrt","pairwise"] # full set but running incremental diffusions
 hyper_beta_func = ["pairwise", "linear", "sqrt"]
 
@@ -67,8 +69,8 @@ gnames = [
         "spatial-hypergraph-5000-2", 
         "spatial-hypergraph-5000-5",
         #larger graphs 
-        # "spatial-hypergraph-50000-2", 
-        # "spatial-hypergraph-50000-5",
+        "spatial-hypergraph-50000-2", 
+        "spatial-hypergraph-50000-5",
 ]
 
 summary_info = []
