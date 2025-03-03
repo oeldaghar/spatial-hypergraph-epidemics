@@ -6,6 +6,7 @@ using Distributed
 @everywhere using Measures
 @everywhere using Combinatorics, Graphs, LinearAlgebra
 @everywhere using ProgressMeter
+@everywhere using MatrixNetworks
 
 # pairwise projections 
 using LazySets
@@ -43,7 +44,7 @@ end
         end
     end
     nnodes = maximum([maximum(ei),maximum(ej)])
-    A = sparse(ei,ej,ones(lastindex(ei)),nnodes,nnodes)
+    A = sparse(ei,ej,ones(Float64,lastindex(ei)),nnodes,nnodes)
     for i=1:nnodes
         A[i,i]=0
     end
@@ -194,6 +195,14 @@ end
     return mean(cc)
 end 
 
+@everywhere function get_weighted_multigraph_cc(hedges)
+    # computes a weighted clustering coefficient. 
+    # see https://journals.aps.org/pre/pdf/10.1103/PhysRevE.71.065103?casa_token=NGVROFqvWlUAAAAA%3AncYoO3BIiC7LfNFF1IG4HUW1DLMEk0GF2exkNVq59E_BbvL4U1GWxUCwB1gtgZ9DLlc53P22FX-cb47W
+    A = pairwise_proj(hedges,multigraph=true)
+    A.nzval ./= maximum(A.nzval)
+    return mean(MatrixNetworks.clustercoeffs(A))
+end 
+
 @everywhere function run_cc_trial(n,d,alphas)
     X = rand(d,n)
 
@@ -213,16 +222,18 @@ end
     local_cc_g = pmap(x->get_local_cc(x),graphs)
     # mulitgraph clustering 
     local_cc_mg = pmap(x->get_multigraph_cc(x),graphs)
-    return [global_cc_g, local_cc_g, global_cc_hg, local_cc_mg]
+    weighted_cc_mg = pmap(x->get_weighted_multigraph_cc(x),graphs)
+    return [global_cc_g, local_cc_g, global_cc_hg, local_cc_mg, weighted_cc_mg]
 end
 
-function get_cc_row_plotting_data(n=10000,d=2,alphas=range(0,2,25),n_trials=10)
+function get_cc_row_plotting_data(n=10000,d=2,alphas=range(0,2,25),n_trials=25)
     trials = @showprogress map(x->run_cc_trial(n,d,alphas),1:n_trials)
     global_cc_g_mat = reduce(hcat,first.(trials))
     local_cc_g_mat = reduce(hcat,map(x->x[2],trials))
     global_cc_hg_mat = reduce(hcat,map(x->x[3],trials))
     local_cc_mg_mat = reduce(hcat,map(x->x[4],trials))
-    return [global_cc_g_mat, local_cc_g_mat, global_cc_hg_mat, local_cc_mg_mat]
+    weighted_cc_mg_mat = reduce(hcat,map(x->x[5],trials))
+    return [global_cc_g_mat, local_cc_g_mat, global_cc_hg_mat, local_cc_mg_mat, weighted_cc_mg_mat]
 end
 
 # PLOT 1 - quantiles
@@ -244,7 +255,7 @@ function quantile_plot(data_mat,alphas)
 end
 
 function make_cc_fig(row_data)
-    global_cc_g_mat, local_cc_g_mat ,global_cc_hg_mat, local_cc_mg_mat = row_data
+    global_cc_g_mat, local_cc_g_mat ,global_cc_hg_mat, local_cc_mg_mat, weighted_cc_mg_mat = row_data
 
     f1 = quantile_plot(global_cc_g_mat,alphas)
     Plots.plot!(f1,
@@ -272,7 +283,14 @@ function make_cc_fig(row_data)
                 ylabel="Multigraph Local CC", 
                 ylims=(0.15,0.5)
             )
-    plt = Plots.plot(f1,f2,f3,f4,layout=(1,4), margin=6*Plots.mm,size=(1800,400))
+    
+    # f5 = quantile_plot(weighted_cc_mg_mat,alphas)
+    # Plots.plot!(f5,
+    #             xlabel=L"\alpha", 
+    #             ylabel="Weighted Multigraph CC", 
+    #             ylims=(0.0,1.0)
+    #         )
+    plt = Plots.plot(f1,f2,f4,f3,layout=(1,4), margin=6*Plots.mm,size=(1700,400))
                                         
     #touch up margins
     Plots.plot!(plt[2],left_margin=2Measures.mm,bottom_margin=5Measures.mm)
@@ -282,7 +300,7 @@ end
 
 println("Simulating data...")
 Random.seed!(1234)
-n = 1000
+n = 10000
 alphas = range(0,2,25)
 row1 = get_cc_row_plotting_data(n,2,alphas)
 row2 = get_cc_row_plotting_data(n,5,alphas)
@@ -301,8 +319,8 @@ Plots.plot!(f3,plot_title="n=$n d=10",plot_titlefontsize=24)
 plt = Plots.plot(f1,f2,f3,layout=(3,1),size=(1400,1200),
         top_margin=-5Plots.mm,dpi=500)
 
-Plots.savefig(plt,"data/output/figures/testing/hypergraph-cc.png")
-Plots.savefig(plt,"data/output/figures/testing/hypergraph-cc.pdf")
+# Plots.savefig(plt,"data/output/figures/testing/hypergraph-cc.png")
+Plots.savefig(plt,"data/output/figures/final/hypergraph-cc.pdf")
 
 # # star graph 
 # A = sparse([0 0 0 1; 0 0 0 1; 0 0 0 1;1 1 1 0])
@@ -337,3 +355,57 @@ Plots.savefig(plt,"data/output/figures/testing/hypergraph-cc.pdf")
 # t,w = multigraph_clustering_optimized(A)
 # norm(t.-[2,4,2])==0
 # norm(w .- [8,4,8])==0
+# graphs = pmap(alpha -> hypergraph_edges(X, deg_list;radfunc=get_func(alpha)), range(0,2,15))
+# get_weighted_multigraph_cc.(graphs)
+
+# function testing_weighted_cc(n,d,ntrials=10)
+#     violation = 0
+#     @showprogress for trial = 1:ntrials
+#         alphas = range(0,2,25)
+#         X = rand(d,n)
+#         deg_list = zeros(Int, n)
+#         degreedist = LogNormal(log(3),1)
+#         for i = 1:n
+#             deg_list[i] = min(ceil(Int,rand(degreedist)),n-1)
+#         end
+#         graphs = pmap(alpha -> hypergraph_edges(X, deg_list;radfunc=get_func(alpha)), alphas)
+#         weighted_cc = pmap(x->get_weighted_multigraph_cc(x),graphs)
+#         if any(isnan.(weighted_cc))
+#             println("GOT NAN...")
+#             ind = findfirst(isnan.(weighted_cc))
+#             return graphs[ind]
+#         end
+#     end
+#     return violation
+# end
+
+# res = testing_weighted_cc(500,10,100)
+# tmp = deepcopy(res)
+# A = pairwise_proj(tmp,multigraph=true)
+# A.nzval./=maximum(A.nzval)
+# sum(MatrixNetworks.clustercoeffs(A))/lastindex(A,1)
+
+# # write A to file 
+# original = MatrixNetworks.clustercoeffs(A)
+# for i = 1:100
+#     new = MatrixNetworks.clustercoeffs(A)
+#     err = norm(new.-original)
+#     if err>1e-5
+#         println("ERROR, norm difference of $(err)")
+#     end
+# end
+
+# # writeSMAT 
+# function writeSMAT(A::SparseMatrixCSC,filename::String)
+#     Is,Js,Vs = findnz(A)
+#     nedges = length(Is)
+#     open(filename,"w") do file
+#         write(file,"$(size(A,1)) $(size(A,2)) $nedges\n")
+#         for i=1:nedges
+#             #smat assumes node labels start at 0
+#             write(file,"$(Is[i]-1) $(Js[i]-1) $(Vs[i])\n") 
+#         end
+#     end
+# end
+
+# writeSMAT(A,"weighted_cc_example.smat")

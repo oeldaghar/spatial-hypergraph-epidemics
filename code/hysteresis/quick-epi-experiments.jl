@@ -9,7 +9,7 @@ using JSON3
 @everywhere include("../sirs.jl")
 
 # where files are stored 
-DATA_PATH = "data/hysteresis/sirs/scratch-v2/"
+DATA_PATH = "data/hysteresis/sirs/scratch-v3/"
 if !(ispath(DATA_PATH))
     mkpath(DATA_PATH)
 end
@@ -29,9 +29,9 @@ nsamples_per_seeds = 5
 initial_infected_fractions = [0.05, 0.1]#, 0.15] #, 0.2, 0.25]
 # epidemic parameters 
 # beta = vcat(1e-3:1e-3:1e-2, 2e-2:1e-2:1e-1, 2e-1:1e-1:9e-1)
-beta = [1e-2, 5e-2 ,0.1, 0.4, 0.9]
+beta = [1e-2, 2e-2, 3e-2, 4e-2, 5e-2 ,0.1, 0.9]
 # gamma,delta,exo = [5e-2],[1/20],[5/1e6]
-gamma, delta, exo = [0.05, 0.1], [0.01, 0.05, 0.1], [5/1e6] # from the conference paper
+gamma, delta, exo = [0.05], [0.01, 0.02, 0.03, 0.04], [5/1e6] # from the conference paper
 # tmax = [365*10]
 tmax = [2000]
 # hyper_beta_func = ["linear","sqrt","pairwise"] # full set but running incremental diffusions

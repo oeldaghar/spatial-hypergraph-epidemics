@@ -5,7 +5,11 @@ using LaTeXStrings
 
 function plot_data(trials)
     eigvals = reduce(hcat, trials) # now we have alpha as row index and trial as column index
-    p = Plots.plot(xlabel="α", ylabel="Weighted Projected λ₁")  
+    p = Plots.plot(xlabel="α", ylabel="Weighted Projected λ₁",
+                    tickfontsize=10,
+                    yguidefontsize = 15,
+                    xguidefontsize = 15)  
+
     # show the full data as a ribbon
     minl = minimum.(eachrow(eigvals))
     maxl = maximum.(eachrow(eigvals))
@@ -13,6 +17,7 @@ function plot_data(trials)
     upper = maxl .- mid
     lower = mid .- minl
     @show minl, maxl
+    alphas = range(0,2,lastindex(trials,1))
     Plots.plot!(p, alphas, (minl .+ maxl)/2, 
                 linewidth=0, 
                 linealpha=0,
@@ -48,18 +53,29 @@ p1 = plot_data(projected_trials_pairwise)
 # Plots.plot!(p1, ylabel="",framestyle=:grid,
 #             yticks=(ticks[1],fill("",length(ticks[2]))))
 Plots.plot!(p1,title="g(m)=1",
-    titlefont=font("Helvetica Bold", 14))
+    titlefont=font("Helvetica Bold", 14),
+    ylims = (7.548591979688312, 879.3020219519976),
+    yscale=:log10,
+    )
+Plots.savefig(p1,"data/output/figures/final/projected-lambda1-pairwise.pdf")
 
 p2 = plot_data(projected_trials_sqrt)
-# ticks = yticks(p2)[1]
-# Plots.plot!(p2, ylabel="",framestyle=:grid,
-#             yticks=(ticks[1],fill("",length(ticks[2]))))
 Plots.plot!(p2,title="g(m)=sqrt(m)",
-    titlefont=font("Helvetica Bold", 14))
+    titlefont=font("Helvetica Bold", 14),
+    ylims = (7.548591979688312, 879.3020219519976),
+    yscale=:log10)
+Plots.savefig(p2,"data/output/figures/final/projected-lambda1-sqrt.pdf")
+
 
 p3 = plot_data(projected_trials_linear)
 Plots.plot!(p3, title="g(m)=m",
-            titlefont=font("Helvetica Bold", 14))
+            titlefont=font("Helvetica Bold", 14),
+            ylims = (7.548591979688312, 879.3020219519976),
+            yscale=:log10)
+Plots.savefig(p3,"data/output/figures/final/projected-lambda1-linear.pdf")
+
+
+
 
 #### COMBINING PLOTS
 figs = Plots.plot(p3,p2,p1,
@@ -68,6 +84,7 @@ figs = Plots.plot(p3,p2,p1,
             link=:y,
             yscale=:log10,
 )
+ylims(figs)
 #visual spacing
 Plots.plot!(figs[1],left_margin=12Measures.mm)
 Plots.plot!(figs[2],left_margin=5Measures.mm)

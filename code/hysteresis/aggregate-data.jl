@@ -329,11 +329,11 @@ base_graph_names = [
 
 
 base_graph_names = [
-    # "spatial-hypergraph-5000-2",
-    # "spatial-hypergraph-5000-5",
+    "spatial-hypergraph-5000-2",
+    "spatial-hypergraph-5000-5",
     # larger 
     "spatial-hypergraph-50000-2",
-    # "spatial-hypergraph-50000-5"
+    "spatial-hypergraph-50000-5"
 ]
 RAW_DATA = Dict()
 for base_graph in base_graph_names
@@ -345,14 +345,15 @@ for base_graph in base_graph_names
         println(x)
     end
     for fname in graph_names #smaller graph 
-        RAW_DATA[fname] = load_epidemic_data_reduce("data/hysteresis/sirs/scratch/",fname,x->dictionary_trailing_average(x,1000),truncate=true,ntruncate=1000)
+        # RAW_DATA[fname] = load_epidemic_data_reduce("data/hysteresis/sirs/scratch-v2/",fname,x->dictionary_trailing_average(x,1000),truncate=true,ntruncate=1000)
+        RAW_DATA[fname] = load_epidemic_data_reduce("data/hysteresis/sirs/scratch-v3/",fname,x->dictionary_trailing_average(x,1000),truncate=false)
     end
 end 
 
 # quick and dirty data 
-varinfo()
+# varinfo()
 
-open("aggregated-sirs-output-scratch-v1.json","w") do io
+open("aggregated-sirs-output-scratch-v3.json","w") do io
     JSON3.write(io, RAW_DATA)
 end 
 
@@ -362,19 +363,19 @@ end
 #     "spatial-hypergraph-5000-2",
 #     "spatial-hypergraph-5000-5",
 # ]
-for base_graph in new_graphs
-    graph_names = map(x->"$(splitext(basename(x))[1]).jsonl",get_fnames(base_graph))
-    filter!(x->occursin("newalpha.jsonl",x),graph_names)
+# for base_graph in new_graphs
+#     graph_names = map(x->"$(splitext(basename(x))[1]).jsonl",get_fnames(base_graph))
+#     filter!(x->occursin("newalpha.jsonl",x),graph_names)
 
-    println("ALL GRAPHS..")
-    for x in graph_names
-        println(x)
-    end
-    for fname in graph_names 
-        RAW_DATA[fname] = load_epidemic_data_reduce("data/hysteresis/sirs/",fname,x->dictionary_trailing_average(x,1000),truncate=true,ntruncate=1000)
-    end
-end 
+#     println("ALL GRAPHS..")
+#     for x in graph_names
+#         println(x)
+#     end
+#     for fname in graph_names 
+#         RAW_DATA[fname] = load_epidemic_data_reduce("data/hysteresis/sirs/",fname,x->dictionary_trailing_average(x,1000),truncate=true,ntruncate=1000)
+#     end
+# end 
 
-open("aggregated-sirs-output-v2.json","w") do io
-    write(io, RAW_DATA)
-end 
+# open("aggregated-sirs-output-v2.json","w") do io
+#     write(io, RAW_DATA)
+# end 

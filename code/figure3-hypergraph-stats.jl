@@ -1,4 +1,5 @@
 using Distributed
+# nworkers()
 # Distributed.addprocs(10)
 @everywhere include("spatial-hypergraph.jl")
 @everywhere using Distributions, Random
@@ -185,8 +186,8 @@ function get_row_plotting_data(n=10000,d=2,alphas=range(0,2,25),ntrials=25,cente
     # matrix of alphas vs trial. vector in each component
     edge_cnts = reduce(hcat,map(x->x[4],trials))
     # aggreagte across trials #ncols 
-    edge_cnts = sum_columns_of_matrix(edge_cnts)
-    edge_cnts = edge_cnts./=sum(edge_cnts,dims=1)
+    edge_cnts = sum_columns_of_matrix(edge_cnts)./ntrials
+    # edge_cnts = edge_cnts./=sum(edge_cnts,dims=1)
 
     return [edge_cnts, nedges, ntris]
 end 
@@ -224,20 +225,12 @@ function _custom_heatmap(pdata)
     f = Plots.heatmap(1:lastindex(new_mat,2),ybins[1:end-1],log10.(new_mat),
                 yscale=:log10,
                 color=:viridis,
-                clims=(-5,0),
+                # clims=(-5,0),
                 )
     return f#,new_mat,ybins 
 end
 
 function make_fig(data)
-    # alphas = range(0,2,15)
-    # n = 5000
-    # println("Simulating data...")
-    # row1 = get_row_plotting_data(n,2,alphas)
-    # row2 = get_row_plotting_data(n,5,alphas)
-    # row3 = get_row_plotting_data(n,10,alphas)
-    # data = [row1,row2,row3]
-
     # handle heatmaps
     # make same size 
     max_hyperedge_size = maximum(map(x->size(x[1],1),data))
@@ -255,6 +248,8 @@ function make_fig(data)
         Plots.plot!(f,
                 xlabel=L"\alpha",
                 ylabel="Hyperedge size",
+                colorbar_title="Average Hyperedges",
+                colorbar_titlefontsize = 14,
                 xticks=([1,7,13,19,25], [0.0, 0.5, 1.0, 1.5, 2.0]),
                 yscale=:log10,
                 color=:viridis,
@@ -263,17 +258,6 @@ function make_fig(data)
                 thickness_scaling=1.2,
                 guidefontsize=14,
                 tickfontsize=12)
-        # f = Plots.heatmap(log10.(pdata), 
-        #         xlabel=L"\alpha",
-        #         ylabel="Hyperedge size",
-        #         xticks=([1,7,13,19,25], [0.0, 0.5, 1.0, 1.5, 2.0]),
-        #         yscale=:log10,
-        #         color=:viridis,
-        #         clims=(-5.0,0),
-        #         framestyle=:box,
-        #         thickness_scaling=1.2,
-        #         guidefontsize=14,
-        #         tickfontsize=12)
         push!(col1_figs,f)
     end
 
@@ -290,7 +274,8 @@ function make_fig(data)
                     thickness_scaling=1.2,
                     guidefontsize=14,
                     tickfontsize=12,
-                    tickdirection=:out)
+                    tickdirection=:out,
+                    ymirror=true)
         for (q, lw, c) in zip(quantiles, linewidths, colors)
             nedges_q = quantile.(eachrow(pdata), q)
             Plots.plot!(f, alphas, nedges_q, label="", linewidth=lw, color=c,    
@@ -311,7 +296,8 @@ function make_fig(data)
                     thickness_scaling=1.2,
                     guidefontsize=14,
                     tickfontsize=12,
-                    tickdirection=:out)
+                    tickdirection=:out,
+                    ymirror=true)
         for (q, lw, c) in zip(quantiles, linewidths, colors)
             ntris_q = quantile.(eachrow(pdata), q)
             Plots.plot!(f, alphas, ntris_q, label="", linewidth=lw, color=c,    
@@ -325,7 +311,6 @@ function make_fig(data)
         Plots.plot!(f,ylims=col_ylims)
     end
 
-
     # put them all together 
     figs =[]
     for tup in zip(col1_figs,col2_figs,col3_figs)
@@ -338,22 +323,23 @@ function make_fig(data)
     plt = Plots.plot(figs...,layout=l, 
                 margin=0*Plots.mm, size=(1200,1100))
     Plots.plot!(plt,top_margin = 10mm,bottom_margin=-2mm)
-    Plots.plot!(plt[2],title="n=$n  d=2",titlefontsize = 24,
+    Plots.plot!(plt[2],title="n=$n  d=2",titlefontsize = 20,
                     top_margin=-3Measures.mm)
-    Plots.plot!(plt[5],title="n=$n  d=5",titlefontsize = 24,
+    Plots.plot!(plt[5],title="n=$n  d=5",titlefontsize = 20,
                     top_margin=-3Measures.mm)
-    Plots.plot!(plt[8],title="n=$n  d=10",titlefontsize = 24,
+    Plots.plot!(plt[8],title="n=$n  d=10",titlefontsize = 20,
                     top_margin=-3Measures.mm)
-    return plt 
+    return plt,figs 
 end
 
 alphas = range(0,2,25)
 n = 10000
-centers = 1
+ntrials = 25
+Random.seed!(457)
 println("Simulating data...")
-row1 = get_row_plotting_data(n,2,alphas,centers)
-row2 = get_row_plotting_data(n,5,alphas,centers)
-row3 = get_row_plotting_data(n,10,alphas,centers)
+row1 = get_row_plotting_data(n,2,alphas,ntrials)
+row2 = get_row_plotting_data(n,5,alphas,ntrials)
+row3 = get_row_plotting_data(n,10,alphas,ntrials)
 data = [row1,row2,row3]
 
 plt = make_fig(data)
@@ -361,3 +347,131 @@ plt = make_fig(data)
 Plots.savefig(plt,"data/output/figures/final/hypergraph-stats.pdf")
 # Plots.plot!(plt,dpi=1000)
 # Plots.savefig(plt,"data/output/figures/final/hypergraph-stats.png")
+
+
+
+
+# function make_fig_new(data)
+#     # make same size 
+#     max_hyperedge_size = maximum(map(x->size(x[1],1),data))
+#     for row in data
+#         heatmap_data = row[1]
+#         rows_to_pad = max_hyperedge_size-size(heatmap_data,1)
+#         row[1] = vcat(heatmap_data,zeros(rows_to_pad,size(heatmap_data,2)))
+#     end
+
+#     # make individual figures 
+#     # heatmaps 
+#     col1_figs = []
+#     for pdata in first.(data)
+#         f = _custom_heatmap(pdata)
+#         Plots.plot!(f,
+#                 xlabel=L"\alpha",
+#                 ylabel="Hyperedge size",
+#                 xticks=([1,7,13,19,25], [0.0, 0.5, 1.0, 1.5, 2.0]),
+#                 yscale=:log10,
+#                 color=:viridis,
+#                 # clims=(-6.0,0),
+#                 framestyle=:box,
+#                 thickness_scaling=1.2,
+#                 guidefontsize=14,
+#                 tickfontsize=12)
+#         push!(col1_figs,f)
+#     end
+
+#     # col2 and col3 
+#     quantiles = [0.1,0.25,0.5,0.75,0.9]
+#     linewidths = [0.5, 1, 2, 1, 0.5]
+#     colors = [:lightgrey, :grey, :black, :grey, :lightgrey]
+
+#     # total edges 
+#     col2_figs = []
+#     for pdata in map(x->x[2],data)
+#         f = Plots.plot(xlabel=L"\alpha", ylabel="Total hyperedges", 
+#                     framestyle=:box,
+#                     thickness_scaling=1.2,
+#                     guidefontsize=14,
+#                     tickfontsize=12,
+#                     tickdirection=:out)
+#         for (q, lw, c) in zip(quantiles, linewidths, colors)
+#             nedges_q = quantile.(eachrow(pdata), q)
+#             Plots.plot!(f, alphas, nedges_q, label="", linewidth=lw, color=c,    
+#                 yscale=:log10)
+#         end
+#         push!(col2_figs,f)
+#     end
+#     # align ylims 
+#     col_ylims = Plots.ylims(Plots.plot(col2_figs...,layout=(3,1),link=:all))
+#     for f in col2_figs
+#         Plots.plot!(f,ylims=col_ylims)
+#     end
+
+#     col3_figs = []
+#     for pdata in map(x->x[3],data)
+#         f = Plots.plot(xlabel=L"\alpha", ylabel="Total Triangles", 
+#                     framestyle=:box,
+#                     thickness_scaling=1.2,
+#                     guidefontsize=14,
+#                     tickfontsize=12,
+#                     tickdirection=:out)
+#         for (q, lw, c) in zip(quantiles, linewidths, colors)
+#             ntris_q = quantile.(eachrow(pdata), q)
+#             Plots.plot!(f, alphas, ntris_q, label="", linewidth=lw, color=c,    
+#                 yscale=:log10)
+#         end
+#         push!(col3_figs,f)
+#     end
+#     # align ylims 
+#     col_ylims = Plots.ylims(Plots.plot(col3_figs...,layout=(3,1),link=:all))
+#     for f in col3_figs
+#         Plots.plot!(f,ylims=col_ylims)
+#     end
+
+#     col4_figs = []
+#     # mapslices.(x->findlast(x.>0),first.(data),dims=1)
+#     for pdata in first.(data)
+#         max_hsizes = vec(mapslices(x->findlast(x.>0),pdata,dims=1))
+#         f = Plots.plot(alphas,max_hsizes,
+#                 xlabel=L"\alpha",
+#                 ylabel = "Max Hyperedge Size",
+#                 yscale=:identity,
+#                 c=:black,
+#                 linewidth=2.0,
+#                 leg=false
+#         )
+#         push!(col4_figs,f)
+#     end
+#     # put them all together 
+#     figs =[]
+#     for tup in zip(col1_figs,col2_figs,col3_figs,col4_figs)
+#         push!(figs,tup[1])
+#         push!(figs,tup[2])
+#         push!(figs,tup[3])
+#         push!(figs,tup[4])
+#     end
+
+#     width_vals = [0.37, 0.21, 0.21, 0.21]
+#     custom_layout = @layout [
+#                         a{0.05h}
+#                         Plots.grid(1,4,widths = width_vals)
+#                         b{0.05h}
+#                         Plots.grid(1,4,widths = width_vals)
+#                         c{0.05h}
+#                         Plots.grid(1,4,widths = width_vals)
+#                     ]
+#     plt = Plots.plot( 
+#                 plot(title="n=$n, d=2", grid=false, showaxis=false, bottom_margin=-20Plots.px),
+#                 figs[1:4]...,
+#                 plot(title="n=$n, d=5", grid=false, showaxis=false, bottom_margin=-20Plots.px),
+#                 figs[5:8]...,
+#                 plot(title="n=$n, d=10", grid=false, showaxis=false, bottom_margin=-20Plots.px),
+#                 figs[9:12]...,
+#                 layout=custom_layout, 
+#                 size = (1600,1200),
+#                 margins=5Plots.mm,
+#     )
+#     return plt 
+# end
+
+
+# plt = make_fig_new(data)

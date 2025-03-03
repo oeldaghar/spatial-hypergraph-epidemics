@@ -115,7 +115,8 @@ load_aggregated_data(fname) = load_aggregated_data("",fname)
 
 # takes about 3 mins 
 # aggregated_data = load_aggregated_data("aggregated-sirs-output.json")
-aggregated_data = load_aggregated_data("aggregated-sirs-output-scratch-v1.json")
+# aggregated_data = load_aggregated_data("aggregated-sirs-output-scratch-v1.json")
+aggregated_data = load_aggregated_data("aggregated-sirs-output.json")
 
 # plot 1: can we see hysteresis as we vary beta for a single graph 
 # plot binned rolling average by starting condition vs beta as scatter plot
@@ -123,7 +124,7 @@ aggregated_data = load_aggregated_data("aggregated-sirs-output-scratch-v1.json")
 # we'd expect to see that points corresponding to the same beta should be very close to one another
 # (the initial condition doesn't matter)
 # otherwise, we'd expect to see meaningfully different values for the same beta 
-function _custom_heatmap(pdata,xvals = -1)
+function _custom_heatmap(pdata,xvals = -1, max_normalize=false)
     # function to bin rows of the heatmap weight matrix
     function _bin_indices(bins::Vector, pdata::Vector)
         bin_dict = Dict{Float64, Vector{Int}}()
@@ -160,7 +161,9 @@ function _custom_heatmap(pdata,xvals = -1)
 
     new_mat = _log_bin_ydata(pdata,ybins)
     # renormalize columns
-    new_mat = mapslices(x -> x ./ maximum(x[(!).(isnan.(x))]), new_mat, dims=1)
+    if max_normalize
+        new_mat = mapslices(x -> x ./ maximum(x[(!).(isnan.(x))]), new_mat, dims=1)
+    end
     # yvals = [mean(ybins[i:i+1]) for i=1:lastindex(ybins)-1]
     # xrange, yrange, data_matrix, yaxis scale
     if xvals == -1
@@ -210,27 +213,75 @@ linear_data, sqrt_data, pairwise_data = total_infections_heatmap(aggregated_data
 
 
 f1 = Plots.heatmap(alpha_vals,beta_vals,log10.(linear_data),yscale=:log10, clims=(0.5,4.4))
-Plots.plot!(f1,xlabel = L"\alpha", ylabel = L"\beta",title="Total Infections, g(m)=m")
+Plots.plot!(f1,xlabel = L"\alpha", ylabel = L"\beta",title="Total Infections g(m)=m",
+            framestyle=:box,
+            thickness_scaling=1.2,
+            guidefontsize=15,
+            top_margin=0Measures.mm)
+Plots.savefig(f1,"data/output/figures/final/total-infections-linear.pdf")
 
 f2 = Plots.heatmap(alpha_vals,beta_vals,log10.(sqrt_data),yscale=:log10, clims=(0.5,4.4))
-Plots.plot!(f2,xlabel = L"\alpha", ylabel = L"\beta",title="Total Infections, g(m)=sqrt(m)")
+Plots.plot!(f2,xlabel = L"\alpha", ylabel = L"\beta",title="Total Infections, g(m)=sqrt(m)",
+            framestyle=:box,
+            thickness_scaling=1.2,
+            guidefontsize=15,
+            top_margin=0Measures.mm)
+Plots.savefig(f2,"data/output/figures/final/total-infections-sqrt.pdf")
 
 f3 = Plots.heatmap(alpha_vals,beta_vals,log10.(pairwise_data),yscale=:log10, clims=(0.5,4.4))
-Plots.plot!(f3,xlabel = L"\alpha", ylabel = L"\beta",title="Total Infections, g(m)=1")
+Plots.plot!(f3,xlabel = L"\alpha", ylabel = L"\beta",title="Total Infections, g(m)=1",
+            framestyle=:box,
+            thickness_scaling=1.2,
+            guidefontsize=15,
+            top_margin=0Measures.mm)
+Plots.savefig(f3,"data/output/figures/final/total-infections-pairwise.pdf")
 
 
+mytitle = ""
+fname_suffix = ""
+figs = []
+for hyper_beta_func in ["pairwise","sqrt","linear"]
+    if hyper_beta_func=="pairwise"
+        tmp = pairwise_data
+        mytitle = "g(m)=1"
+        fname_suffix = "pairwise"
+    elseif hyper_beta_func == "sqrt"
+        tmp = sqrt_data
+        mytitle = "g(m)=sqrt(m)"
+        fname_suffix = "sqrt"
+    elseif hyper_beta_func == "linear"
+        tmp = linear_data
+        mytitle = "g(m)=m"
+        fname_suffix = "linear"
+    end
+    f = Plots.plot(leg=false)
+    colors = cgrad(:plasma, size(tmp,1), categorical=true)
+    for (ind,row) in enumerate(eachrow(tmp))
+        Plots.plot!(f,alpha_vals,vec(row),c =colors[ind])
+    end
+    Plots.plot!(f,ylabel="Total Infections",xlabel=L"\alpha",
+                    title=mytitle,
+                    title_fontsize=8,
+                    framestyle=:box,
+                    thickness_scaling=1.2,
+                    guidefontsize=15,
+                    yscale=:log10)
+    display(f)
+    Plots.savefig(f,"data/output/figures/final/total-infections-trajectory-$fname_suffix.pdf")
+    push!(figs,f)
+end
+
+Plots.plot(figs...,layout=(1,3),size=(1200,300),
+        top_margin=3Plots.mm,
+        bottom_margin = 5Plots.mm,
+        left_margin=3Plots.mm,
+        link=:y,)
 
 
 
 
 
 # touch things up if needed and save them
-
-data = aggregated_data[graph_names[5]]
-
-filtered_data = hcat(data["beta"], data["hyper_beta_func"], data["initial_num_infected_nodes"])
-grouped_inds = group_by_function(x -> (x[1], x[2], x[3]), eachrow(filtered_data))
-grouped_rolling_averages = Dict(k => rolling_average(data["infections"][grouped_inds[k], :], 1000) for k in keys(grouped_inds))
 
 function hysteresis_data(agg_data,gname_key="-50000-2-")
     graph_names = collect(keys(agg_data))
@@ -252,15 +303,13 @@ function hysteresis_data(agg_data,gname_key="-50000-2-")
 
     for (col,gname) in enumerate(graph_names) # loop over alpha
         data = agg_data[gname]
-        i0 = unique(data["initial_num_infected_nodes"])
         # group data 
-        filtered_data = hcat(data["beta"], data["hyper_beta_func"], data["initial_num_infected_nodes"])
-        grouped_inds = group_by_function(x -> (x[1], x[2], x[3]), eachrow(filtered_data))
-        grouped_averages = Dict(k => mean(data["infections"][grouped_inds[k],:]) for k in keys(grouped_inds))
+        filtered_data = hcat(data["beta"], data["hyper_beta_func"])
+        grouped_inds = group_by_function(x -> tuple(x...), eachrow(filtered_data))
         for (row,beta) in enumerate(beta_vals)
-            linear_data[row,col] = _compute_range([grouped_averages[(beta,"linear",i)] for i in i0])
-            sqrt_data[row,col] = _compute_range([grouped_averages[(beta,"sqrt",i)] for i in i0])
-            pairwise_data[row,col] = _compute_range([grouped_averages[(beta,"pairwise",i)] for i in i0])
+            linear_data[row,col] = _compute_range(mean(data["infections"][grouped_inds[(beta,"linear")],:],dims=2))
+            sqrt_data[row,col] = _compute_range(mean(data["infections"][grouped_inds[(beta,"sqrt")],:],dims=2))
+            pairwise_data[row,col] = _compute_range(mean(data["infections"][grouped_inds[(beta,"pairwise")],:],dims=2))
         end
     end    
     return linear_data, sqrt_data, pairwise_data    
@@ -283,19 +332,20 @@ for hyper_beta_func in ["pairwise", "sqrt", "linear"]
     end
     f = Plots.heatmap(alpha_vals, beta_vals, tmp,
             yscale=:log10,
-            clims=(0,150),
+            clims=(0,600),
             xlabel = L"\alpha",
             ylabel = L"\beta",
+            guidefontsize=15,
             title = mytitle,
             top_margin=3Plots.mm,
+            left_margin=-2Plots.mm,
+            bottom_margin=-2Plots.mm,
+            thickness_scaling = 1.2,
+            size=(600,450)
         )
     Plots.savefig(f,"data/output/figures/final/hysteresis-$hyper_beta_func.pdf")
     display(f)
 end
-
-
-
-
 
 
 
@@ -372,41 +422,7 @@ end
     Plots.savefig(f3, joinpath(figure_path,"pairwise-$gname.png"))
 end
 
-#zooming in on one piece 
-# function stochastic_evolution(data_dir,fname)
-#     data = load_epidemic_data(data_dir,fname,excluded=["ntransmissions_hyperedge","ninfected_hyperedge"])
 
-#     # group data by starting condition, beta, and hyper_beta_func
-#     filtered_data = hcat(data["beta"], data["hyper_beta_func"], data["infections"])
-#     grouped_inds = group_by_function(x -> (x[1], x[2], x[3]), eachrow(filtered_data))
-
-#     # put the plot together 
-#     static_keys = sort(collect(keys(grouped_inds)))
-#     linear_keys = [k for k in static_keys if k[2] == "linear"]
-#     sqrt_keys = [k for k in static_keys if k[2] == "sqrt"]
-
-#     beta_vals = unique(first.(linear_keys))
-#     beta_map = Dict(map(x -> (x[2], x[1]), enumerate(sort(beta_vals))))
-
-#     beta = 9e-3
-#     # pick a value of beta and do a plot for each normalization
-#     inds = (first.(static_keys).==beta) .& ([x[2]=="linear" for x in static_keys])
-
-#     f = Plots.plot()
-#     for (i,key) in enumerate(static_keys[inds])
-#         group = grouped_inds[key]
-#         Plots.plot!(f,data["infections"][group,1:200]',c=i,leg=false)
-#     end
-
-#     alpha_val = split(fname,"-")[5]
-#     Plots.plot!(f,
-#         xlabel="Time Step",
-#         ylabel="Total Infections",
-#         title = "alpha=$alpha_val, beta = $beta\n$fname")
-#     return f 
-# end
-
-# f1 = stochastic_evolution(data_dir,fname)
 
 # filtered_fnames = [
 #             "spatial-hypergraph-5000-2-0.0-1-counter_1.json",
@@ -434,25 +450,26 @@ end
 ## PLOTS for hypergraph stats
 #############################
 
-fname = "spatial-hypergraph-50000-2-0.8571428571428571-1-newalpha.jsonl"
-data = aggregated_data[fname]
+for fname in graph_names
+    fname = "spatial-hypergraph-50000-2-0.8571428571428571-1-newalpha.jsonl"
+    data = aggregated_data[fname]
 
-filtered_data = hcat(data["beta"], data["hyper_beta_func"],data["initial_num_infected_nodes"])
-grouped_inds = group_by_function(x -> (x[1], x[2]), eachrow(filtered_data))
+    filtered_data = hcat(data["beta"], data["hyper_beta_func"],data["initial_num_infected_nodes"])
+    grouped_inds = group_by_function(x -> (x[1], x[2]), eachrow(filtered_data))
 
-max_norm = 0
-item = nothing
-for (key,group) in pairs(grouped_inds)
-    tmp = data["ntransmissions_hyperedge"][group,:]'
-    qinfo = mapslices(x->quantile(x,[0,0.5,1]),tmp,dims=2)
-    rel_norm = norm(qinfo[:,3].-qinfo[:,1])/norm(qinfo[:,1])
-    if rel_norm>max_norm
-        max_norm = rel_norm
-        item = key
+    max_norm = 0
+    item = nothing
+    for (key,group) in pairs(grouped_inds)
+        tmp = data["ntransmissions_hyperedge"][group,:]'
+        qinfo = mapslices(x->quantile(x,[0,0.5,1]),tmp,dims=2)
+        rel_norm = norm(qinfo[:,3].-qinfo[:,1])/norm(qinfo[:,1])
+        if rel_norm>max_norm
+            max_norm = rel_norm
+            item = key
+        end
     end
     println("group: $key relative norm: $(rel_norm)")
 end
-
 function plot_with_ribbons(qinfo)
     x = 1:size(qinfo, 1)
     lower = qinfo[:, 1]
@@ -521,9 +538,9 @@ function get_node_coverage(aggregated_data::Dict,hinfo_dict::Dict,graph_name="-5
     return node_coverage
 end
 
-function get_beta_transmissions_data(aggregated_data,graph_name="-50000-2-",beta=2e-2,hyper_beta_func="linear";avg_inf_th=500,coverage=false)
+function get_beta_transmissions_data(agg_data,graph_name="-50000-2-",beta=2e-2,hyper_beta_func="linear";avg_inf_th=500,coverage=false)
     # get related keys 
-    graph_names = collect(keys(aggregated_data))
+    graph_names = collect(keys(agg_data))
     graph_names = filter(x->occursin(graph_name,x),graph_names)
     # sort by value of alpha 
     a_vals = map(x->parse(Float64,split(x,"-")[5]),graph_names)
@@ -531,11 +548,11 @@ function get_beta_transmissions_data(aggregated_data,graph_name="-50000-2-",beta
     graph_names = graph_names[p]
 
     # get maximum h_size over all keys and initialize plotting data 
-    max_hsize = maximum(map(x->size(aggregated_data[x]["ntransmissions_hyperedge"],2),graph_names))
+    max_hsize = maximum(map(x->size(agg_data[x]["ntransmissions_hyperedge"],2),graph_names))
     pdata = zeros(Float64,max_hsize,length(alpha_vals))
     # populate data 
     for (col,gname) in enumerate(graph_names)
-        data = aggregated_data[gname]
+        data = agg_data[gname]
         # group epidemics and pick out our group
         filtered_data = hcat(data["beta"], data["hyper_beta_func"])
         grouped_inds = group_by_function(x -> (x[1], x[2]), eachrow(filtered_data))
@@ -560,50 +577,69 @@ function get_beta_transmissions_data(aggregated_data,graph_name="-50000-2-",beta
 end
 
 ### FIRST SET OF FIGURES ####
-node_cov = get_node_coverage(aggregated_data, hinfo_dict,"-50000-2-")
-f = _custom_heatmap(node_cov,alpha_vals)
-Plots.plot!(f,xlabel=L"\alpha",ylabel="Hyperedge Size",title="Normalized Node Coverage\nn=50000, d=2",
-            clims=(-5.0,0),
-            top_margin=3Plots.mm)
-Plots.savefig(f,"data/output/figures/final/normalized_node_coverage-50000-2.pdf")
+# node_cov = get_node_coverage(aggregated_data, hinfo_dict,"-50000-2-")
+# f = _custom_heatmap(node_cov,alpha_vals)
+# Plots.plot!(f,xlabel=L"\alpha",ylabel="Hyperedge Size",title="Normalized Node Coverage\nn=50000, d=2",
+#             clims=(-5.0,0),
+#             top_margin=3Plots.mm)
+# Plots.savefig(f,"data/output/figures/final/normalized_node_coverage-50000-2.pdf")
 
-pdata = get_beta_transmissions_data(aggregated_data,
-                                "-50000-2-",
-                                2e-3,
-                                "pairwise",
-                                avg_inf_th=0,
-                                coverage = true,
-                            )
-f = _custom_heatmap(pdata,alpha_vals)
-Plots.plot!(f,
-                xlabel=L"\alpha",
-                ylabel="Hyperedge Size",
-                title="Node Normalized Transmissions\nn=50000, d=2, g(m)=1",
-                clims=(-5.0,0),
-                right_margin=3Plots.mm,
-                top_margin=3Plots.mm)
-Plots.savefig(f,"data/output/figures/final/node_normalized_transmissions-50000-2_beta_2e-3.pdf")
+# pdata = get_beta_transmissions_data(aggregated_data,
+#                                 "-50000-2-",
+#                                 2e-3,
+#                                 "pairwise",
+#                                 avg_inf_th=0,
+#                                 coverage = true,
+#                             )
+# f = _custom_heatmap(pdata,alpha_vals)
+# Plots.plot!(f,
+#                 xlabel=L"\alpha",
+#                 ylabel="Hyperedge Size",
+#                 title="Node Normalized Transmissions\nn=50000, d=2, g(m)=1",
+#                 clims=(-5.0,0),
+#                 right_margin=3Plots.mm,
+#                 top_margin=3Plots.mm)
+# Plots.savefig(f,"data/output/figures/final/node_normalized_transmissions-50000-2_beta_2e-3.pdf")
 
 
 # transmissions without node coverage
+hyper_beta = "pairwise"
+beta = 2e-3
 pdata = get_beta_transmissions_data(aggregated_data,
                                 "-50000-2-",
-                                2e-3,
-                                "pairwise",
+                                # 2e-3,
+                                beta,
+                                hyper_beta,
                                 avg_inf_th=0,
                                 coverage = false,
                             )
-f = _custom_heatmap(pdata,alpha_vals)
+pdata = mapslices(x->x./sum(x), pdata,dims=1)
+f = _custom_heatmap(pdata,alpha_vals,false)
 Plots.plot!(f,
                 xlabel=L"\alpha",
                 ylabel="Hyperedge Size",
-                title="Transmissions\nn=50000, d=2, g(m)=1",
-                clims=(-5.0,0),
+                title="Normalized Transmissions\nβ=$beta, g(m)=1",
+                # clims=(-2.8,0),
                 right_margin=3Plots.mm,
-                top_margin=3Plots.mm)
-Plots.savefig(f,"data/output/figures/final/transmissions-50000-2_beta_2e-3.pdf")
+                top_margin=3Plots.mm,
+                bottom_margin=-1Plots.mm,
+                thickness_scaling=1.2)
 
+Plots.savefig(f,"data/output/figures/final/transmissions-2e-3.pdf")
+    
 
+# tmp = mapslices(c->c./sum(c),pdata,dims=1)
+# tmp2 = tmp[end:-1:1,:]
+# tmp3 = mapslices(x->cumsum(x),tmp2,dims=1) 
+# cols = tmp3[:,[2,5,8,11,14]]
+# f = Plots.plot(yscale=:log10,leg=:topleft) # create a new plot
+# for col in eachcol(cols)
+#     ind = findfirst(col .> 0)
+#     Plots.plot!(ind:length(col), col[ind:end])
+# end
+# f
+
+plot_with_ribbons
 # total infections 
 f = Plots.scatter(alpha_vals, pairwise_data[beta_to_ind[2e-3],:],
                     markerstrokewidth = 0,
@@ -622,8 +658,8 @@ Plots.savefig(f,"data/output/figures/final/total-infections-50000-2-beta_2e-3-pa
 
 #### SECOND SET OF PLOTS - ROUGHLY SAME TOTAL INFS ####
 # total infections 
-for b in [5e-1, 6e-1, 7e-1, 8e-1, 9e-1]
-    for hyper_beta_func in ["linear"]#["pairwise", "sqrt", "linear"]
+for b in [2e-2] #5e-1, 6e-1, 7e-1, 8e-1, 9e-1]
+    for hyper_beta_func in ["linear", "pairwise", "sqrt"]
         if hyper_beta_func == "pairwise"
             ys = pairwise_data[beta_to_ind[b],:]
             mytitle = "beta=$b, g(m) = 1"
@@ -641,7 +677,7 @@ for b in [5e-1, 6e-1, 7e-1, 8e-1, 9e-1]
                         xlabel = L"\alpha",
                         ylabel="Total Infections",
                         title = mytitle,
-                        # ylims = (23000,25000),
+                        ylims = (11000,24000),
                         thickness_scaling=1.3
                     )    
         display(f)
@@ -672,61 +708,22 @@ Plots.plot(res)
 println(mean(res[end-100,end]))
 
 
-
-
-
-
-
-
-mytitle = ""
-figs = []
-for hyper_beta_func in ["pairwise","sqrt","linear"]
-    if hyper_beta_func=="pairwise"
-        tmp = pairwise_data
-        mytitle = "n=50000, d=2, g(m)=1"
-    elseif hyper_beta_func == "sqrt"
-        tmp = sqrt_data
-        mytitle = "n=50000, d=2, g(m)=sqrt(m)"
-    elseif hyper_beta_func == "linear"
-        tmp = linear_data
-        mytitle = "n=50000, d=2, g(m)=m"
-    end
-    f = Plots.plot(leg=false)
-    colors = cgrad(:plasma, size(tmp,1), categorical=true)
-    for (ind,row) in enumerate(eachrow(tmp))
-        Plots.plot!(f,alpha_vals,vec(row),c =colors[ind])
-    end
-    Plots.plot!(f,ylabel="Total Infections",xlabel=L"\alpha",
-                    thickness_scaling=1.1,
-                    title=mytitle,
-                    title_fontsize=8)
-    display(f)
-    push!(figs,f)
-end
-
-Plots.plot(figs...,layout=(1,3),size=(1200,300),
-        top_margin=3Plots.mm,
-        bottom_margin = 5Plots.mm,
-        left_margin=3Plots.mm,
-        link=:y,)
-
-
-
 # heatmaps 
 cov = false
 for hyper_beta_func in ["pairwise", "sqrt", "linear"]
+    b = 4e-1
     pdata = get_beta_transmissions_data(aggregated_data,
                                 "-50000-2-",
-                                2e-2,
+                                b,
                                 hyper_beta_func,
                                 avg_inf_th=0,
                                 coverage = cov,
                             )
     f = _custom_heatmap(pdata,alpha_vals)
     if cov 
-        mytitle = "Node Normalized Transmissions"
+        mytitle = "Node Normalized Transmissions, β=$b"
     else
-        mytitle = "Normalized Transmissions"
+        mytitle = "Normalized Transmissions, β=$b"
     end
     if hyper_beta_func=="linear"
         other_stats = "n=50000, d=2, g(m)=m"

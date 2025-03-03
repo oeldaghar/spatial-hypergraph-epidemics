@@ -298,3 +298,4 @@ Plots.plot!(plt,top_margin=-4Plots.mm,
         right_margins=-1Plots.mm)
 
 Plots.savefig("data/output/figures/final/cc-example.pdf")
+Plots.savefig("data/output/figures/final/cc-example.svg")

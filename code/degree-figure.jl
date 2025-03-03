@@ -35,14 +35,17 @@ projected_trials_linear = Vector{Vector{Float64}}(projected_trials_linear)
 p1 = plot_data(projected_trials_pairwise)
 Plots.plot!(p1,title="g(m)=1",
     titlefont=font("Helvetica Bold", 14))
+Plots.savefig(p1,"data/output/figures/final/projected-edge-volume-pairwise.pdf")
 
 p2 = plot_data(projected_trials_sqrt)
 Plots.plot!(p2,title="g(m)=sqrt(m)",
     titlefont=font("Helvetica Bold", 14))
+Plots.savefig(p2,"data/output/figures/final/projected-edge-volume-sqrt.pdf")
 
 p3 = plot_data(projected_trials_linear)
 Plots.plot!(p3,title="g(m)=m",
     titlefont=font("Helvetica Bold", 14))
+Plots.savefig(p3,"data/output/figures/final/projected-edge-volume-linear.pdf")
 
 #### COMBINING PLOTS
 figs = Plots.plot(p3,p2,p1,
