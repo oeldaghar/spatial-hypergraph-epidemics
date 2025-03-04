@@ -345,7 +345,7 @@ f3
 # (the initial condition doesn't matter)
 # otherwise, we'd expect to see meaningfully different values for the same beta 
 using Plots 
-function _custom_heatmap(pdata,xvals = -1,max_normalize=true,return_all=false)
+function _custom_heatmap(pdata,xvals = -1,max_normalize=true)
     # function to bin rows of the heatmap weight matrix
     function _bin_indices(bins::Vector, pdata::Vector)
         bin_dict = Dict{Float64, Vector{Int}}()
@@ -369,7 +369,6 @@ function _custom_heatmap(pdata,xvals = -1,max_normalize=true,return_all=false)
                 if length(inds)>0
                     new_mat[newrow,col] = sum(tmp[inds])
                 end
-                # new_mat[newrow,:] = sum(x->!isnan(x),pdata[old_rows,:],dims=1)
             end
         end
         return new_mat
@@ -385,22 +384,15 @@ function _custom_heatmap(pdata,xvals = -1,max_normalize=true,return_all=false)
     if max_normalize
         new_mat = mapslices(x -> x ./ maximum(x[(!).(isnan.(x))]), new_mat, dims=1)
     end
-    # yvals = [mean(ybins[i:i+1]) for i=1:lastindex(ybins)-1]
-    # xrange, yrange, data_matrix, yaxis scale
+
     if xvals == -1
         xvals = 1:lastindex(new_mat,2)
     end
     f = Plots.heatmap(xvals, ybins[1:end-1], log10.(new_mat),
-    # f = Plots.heatmap(1:lastindex(new_mat,2), yvals, log10.(new_mat),
                 yscale=:log10,
                 color=:viridis,
-                # clims=(-5,0),
                 )
-    if return_all 
-        return f,new_mat,ybins 
-    else 
-        return f 
-    end
+    return f 
 end
 
 

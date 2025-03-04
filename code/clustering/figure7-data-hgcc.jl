@@ -1,16 +1,14 @@
 using Distributed 
-# addprocs(10)
+# addprocs(25)
 
 @everywhere include("../spatial-hypergraph.jl")
-@everywhere using Distributions, Clustering, NearestNeighbors, Random, Plots, LaTeXStrings, Colors
-@everywhere using Measures
+@everywhere using Distributions, Clustering, NearestNeighbors, Random
 @everywhere using Combinatorics, Graphs, LinearAlgebra
 @everywhere using ProgressMeter
 @everywhere using MatrixNetworks
 
 # pairwise projections 
-using LazySets
-using MatrixNetworks
+using JSON
 
 @everywhere using SparseArrays
 # functions for data handling, like computing the biadjacency and pairwise projections of a hypergraphs from it's edges 
@@ -195,13 +193,15 @@ end
     return mean(cc)
 end 
 
-@everywhere function get_weighted_multigraph_cc(hedges)
-    # computes a weighted clustering coefficient. 
-    # see https://journals.aps.org/pre/pdf/10.1103/PhysRevE.71.065103?casa_token=NGVROFqvWlUAAAAA%3AncYoO3BIiC7LfNFF1IG4HUW1DLMEk0GF2exkNVq59E_BbvL4U1GWxUCwB1gtgZ9DLlc53P22FX-cb47W
-    A = pairwise_proj(hedges,multigraph=true)
-    A.nzval ./= maximum(A.nzval)
-    return mean(MatrixNetworks.clustercoeffs(A))
-end 
+# @everywhere function get_weighted_multigraph_cc(hedges)
+#     # computes a weighted clustering coefficient. 
+#     # see https://journals.aps.org/pre/pdf/10.1103/PhysRevE.71.065103?casa_token=NGVROFqvWlUAAAAA%3AncYoO3BIiC7LfNFF1IG4HUW1DLMEk0GF2exkNVq59E_BbvL4U1GWxUCwB1gtgZ9DLlc53P22FX-cb47W
+#     A = pairwise_proj(hedges,multigraph=true)
+#     A.nzval ./= maximum(A.nzval)
+#     return mean(MatrixNetworks.clustercoeffs(A))
+# end 
+
+## TODO - might be able to improve runtime (map for each cc trial but pmap across trials)
 
 @everywhere function run_cc_trial(n,d,alphas)
     X = rand(d,n)
@@ -222,8 +222,8 @@ end
     local_cc_g = pmap(x->get_local_cc(x),graphs)
     # mulitgraph clustering 
     local_cc_mg = pmap(x->get_multigraph_cc(x),graphs)
-    weighted_cc_mg = pmap(x->get_weighted_multigraph_cc(x),graphs)
-    return [global_cc_g, local_cc_g, global_cc_hg, local_cc_mg, weighted_cc_mg]
+    
+    return [global_cc_g, local_cc_g, global_cc_hg, local_cc_mg]
 end
 
 function get_cc_row_plotting_data(n=10000,d=2,alphas=range(0,2,25),n_trials=25)
@@ -232,71 +232,9 @@ function get_cc_row_plotting_data(n=10000,d=2,alphas=range(0,2,25),n_trials=25)
     local_cc_g_mat = reduce(hcat,map(x->x[2],trials))
     global_cc_hg_mat = reduce(hcat,map(x->x[3],trials))
     local_cc_mg_mat = reduce(hcat,map(x->x[4],trials))
-    weighted_cc_mg_mat = reduce(hcat,map(x->x[5],trials))
-    return [global_cc_g_mat, local_cc_g_mat, global_cc_hg_mat, local_cc_mg_mat, weighted_cc_mg_mat]
+    return [global_cc_g_mat, local_cc_g_mat, global_cc_hg_mat, local_cc_mg_mat]
 end
 
-# PLOT 1 - quantiles
-function quantile_plot(data_mat,alphas)
-    q_info = mapslices(x->quantile(x,[0.0,0.5,1.0]),data_mat,dims=2)
-    q_lower = q_info[:,2].-q_info[:,1]
-    q_upper = q_info[:,3].-q_info[:,2]
-    f = Plots.plot(alphas, q_info[:,2], ribbon=(q_lower,q_upper), 
-                leg=false, 
-                # xlabel=L"\alpha", 
-                # ylabel="Pairwise CC", 
-                guidefontsize = 14,
-                linewidth=2, 
-                marker=:circle, 
-                markerstrokewidth=0, 
-                ylims=(0,1),
-    )   
-    return f 
-end
-
-function make_cc_fig(row_data)
-    global_cc_g_mat, local_cc_g_mat ,global_cc_hg_mat, local_cc_mg_mat, weighted_cc_mg_mat = row_data
-
-    f1 = quantile_plot(global_cc_g_mat,alphas)
-    Plots.plot!(f1,
-                xlabel=L"\alpha", 
-                ylabel="Global Pairwise CC", 
-            )
-
-    f2 = quantile_plot(local_cc_g_mat,alphas)
-    Plots.plot!(f2,
-                xlabel=L"\alpha", 
-                ylabel="Local Pairwise CC", 
-                ylims = (0.2,0.85)
-            )
-
-    f3 = quantile_plot(global_cc_hg_mat,alphas)
-    Plots.plot!(f3,
-                xlabel=L"\alpha", 
-                ylabel=L"CC_4", 
-                ylims=(0,0.35)
-            )
-
-    f4 = quantile_plot(local_cc_mg_mat,alphas)
-    Plots.plot!(f4,
-                xlabel=L"\alpha", 
-                ylabel="Multigraph Local CC", 
-                ylims=(0.15,0.5)
-            )
-    
-    # f5 = quantile_plot(weighted_cc_mg_mat,alphas)
-    # Plots.plot!(f5,
-    #             xlabel=L"\alpha", 
-    #             ylabel="Weighted Multigraph CC", 
-    #             ylims=(0.0,1.0)
-    #         )
-    plt = Plots.plot(f1,f2,f4,f3,layout=(1,4), margin=6*Plots.mm,size=(1700,400))
-                                        
-    #touch up margins
-    Plots.plot!(plt[2],left_margin=2Measures.mm,bottom_margin=5Measures.mm)
-    Plots.plot!(plt[1],left_margin=10Measures.mm)
-    return plt 
-end
 
 println("Simulating data...")
 Random.seed!(1234)
@@ -308,19 +246,17 @@ row3 = get_cc_row_plotting_data(n,10,alphas)
 
 data = [row1,row2,row3]
 
-f1 = make_cc_fig(row1)
-Plots.plot!(f1,plot_title="n=$n d=2",plot_titlefontsize=24)
-f2 = make_cc_fig(row2)
-Plots.plot!(f2,plot_title="n=$n d=5",plot_titlefontsize=24)
-f3 = make_cc_fig(row3)
-Plots.plot!(f3,plot_title="n=$n d=10",plot_titlefontsize=24)
+# write to file 
+save_data = Dict()
+for (row,key) in zip(data,[(n,2),(n,5),(n,10)])
+    for (mat_data,mat_name) in zip(row,["global_cc_g_mat", "local_cc_g_mat", "global_cc_hg_mat", "local_cc_mg_mat"])
+        save_data[tuple(key...,mat_name)] = mat_data
+    end
+end
+open("data/output/hgcc_data-n_$n.json", "w") do file
+    JSON.print(file, save_data)
+end
 
-# put them all together
-plt = Plots.plot(f1,f2,f3,layout=(3,1),size=(1400,1200),
-        top_margin=-5Plots.mm,dpi=500)
-
-# Plots.savefig(plt,"data/output/figures/testing/hypergraph-cc.png")
-Plots.savefig(plt,"data/output/figures/final/hypergraph-cc.pdf")
 
 # # star graph 
 # A = sparse([0 0 0 1; 0 0 0 1; 0 0 0 1;1 1 1 0])

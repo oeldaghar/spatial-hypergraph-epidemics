@@ -21,10 +21,6 @@ using Distributed
 @everywhere using MatrixNetworks, Graphs, SparseArrays
 @everywhere using SparseArrays
 
-# Plotting 
-using Plots, LaTeXStrings, Colors
-using Measures
-
 @everywhere function alpha_func_linear(alpha)
     # (dist,deg,dim) -> (alpha^(1/dim)*dist)/(deg)^(1/(2*dim))
     return (dist,deg,dim) -> alpha/2*dist
@@ -56,64 +52,20 @@ function _get_plotting_data(n,d,alphas,ntrials,alpha_func = alpha->get_func(alph
     return trials = @showprogress map(x->run_trial(n,d,alphas,alpha_func), 1:ntrials)
 end
 
-function quantile_figure(data,alphas)
-    quantiles = [0.1,0.25,0.5,0.75,0.9]
-    linewidths = [0.5, 1, 2, 1, 0.5]
-    colors = [:lightgrey, :grey, :black, :grey, :lightgrey]
-
-    # total edges 
-    f = Plots.plot(xlabel=L"\alpha", ylabel="Total hyperedges", 
-                framestyle=:box,
-                thickness_scaling=1.2,
-                guidefontsize=14,
-                tickfontsize=12,
-                tickdirection=:out)
-    for (q, lw, c) in zip(quantiles, linewidths, colors)
-        nedges_q = quantile.(eachrow(data), q)
-        Plots.plot!(f, alphas, nedges_q, label="", linewidth=lw, color=c,    
-            yscale=:log10)
-    end
-    return f
-end
-
-function _remove_tick_labels(f)
-    curr_yticks = Plots.yticks(f)
-    new_yticks = (curr_yticks[1],["" for i=1:lastindex(curr_yticks[1])])
-    Plots.plot!(f,yticks=new_yticks,ylabel="")
-end    
-
+Random.seed!(112358)
 alphas = range(0,2,25)
 n = 10000
-# d = 10
 ntrials = 25
-figs = []
+save_data = Dict()
 for d in [2,5,10]
-    for alpha_func in [get_func,alpha_func_linear,alpha_func_no_dim]
+    for (alpha_func,alpha_func_name) in zip([get_func,alpha_func_linear,alpha_func_no_dim],["alpha_func","linear","no_dim"])
         trials = _get_plotting_data(n,d,alphas,ntrials,alpha_func)
         nedges = reduce(hcat,trials)
-        push!(figs,quantile_figure(nedges,alphas))
+        save_data[(n,d,alpha_func_name)] = nedges
     end
 end
-# put figure together 
-plt = Plots.plot(figs...,layout = (3,3),
-                    size=(1500,1400),
-                    top_margin=8Measures.mm,
-                    link=:all)
-# touch up margins and label 
-Plots.plot!(plt[2],title = "n=$n, d=2",
-        titlefontsize=22)
-Plots.plot!(plt[5],title = "n=$n, d=5",
-        titlefontsize=22)
-Plots.plot!(plt[8],title = "n=$n, d=10",
-        titlefontsize=22)
-for i=1:9
-    if i%3!=1
-        _remove_tick_labels(plt[i])
-    end
-end
-Plots.plot!(plt,bottom_margin=2mm)
-Plots.plot!(plt[1],left_margin=8mm)
-Plots.plot!(plt,top_margin=5mm,dpi = 1000)
 
-Plots.savefig(plt,"data/output/figures/final/alpha-figure.pdf")
-Plots.savefig(plt,"data/output/figures/final/alpha-figure.png")
+# save data 
+open("data/output/alpha_func_data-n_$n.json", "w") do file
+    JSON.print(file, save_data)
+end

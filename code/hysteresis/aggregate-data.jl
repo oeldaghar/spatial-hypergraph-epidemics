@@ -1,6 +1,3 @@
-using StatsPlots
-using Plots
-using Measures
 using StatsBase
 using JSON 
 using JSON3
@@ -8,16 +5,16 @@ using ProgressMeter
 
 println("LOADING IN TOOLS...")
 # screen 
-# include("code/data-io.jl")
-# include("code/hypergraph-tools.jl")
+include("code/data-io.jl")
+include("code/hypergraph-tools.jl")
 # REPL 
-include("../data-io.jl")
-include("../hypergraph-tools.jl")
+# include("../data-io.jl")
+# include("../hypergraph-tools.jl")
 
 data_dir = "data/hysteresis/sirs/"
-figure_path = "data/hysteresis/figures"
-if !ispath(figure_path)
-    mkpath(figure_path)
+save_path = "aggregated_data-test/"
+if !ispath(save_path)
+    mkpath(save_path)
 end
 
 # helper functions 
@@ -276,106 +273,43 @@ beta_vals = vcat(1e-3:1e-3:1e-2, 2e-2:1e-2:1e-1, 2e-1:1e-1:9e-1)
 beta_vals = sort(unique(beta_vals))
 
 base_graph_names = [
-    "spatial-hypergraph-5000-2",
-    "spatial-hypergraph-5000-5",
+    # "spatial-hypergraph-5000-2",
+    # "spatial-hypergraph-5000-5",
     # larger 
-    "spatial-hypergraph-50000-2",
-    "spatial-hypergraph-50000-5"
+    "spatial-hypergraph-50000-2", # graph we have all epidemics for 
+    # "spatial-hypergraph-50000-5"
 ]
 
-# for base_graph in base_graph_names
-#     graph_names = map(x->"$(splitext(basename(x))[1]).jsonl",get_fnames(base_graph))
-#     filter!(x->occursin("newalpha.jsonl",x),graph_names)
-
-#     println("ALL GRAPHS..")
-#     for x in graph_names
-#         println(x)
-#     end
-#     start_time = time()
-#     pdata = Dict()
-#     for fname in graph_names #smaller graph 
-#         alpha_val = parse(Float64,split(fname,"-")[5])
-        
-#         out = hypergraph_stats_data(data_dir,fname,true)
-#         pdata[alpha_val] = out
-#     end
-#     end_time = time()
-#     println("PLOTTING DATA GENERATED IN $(end_time-start_time) SECONDS")
-
-#     # flatten data
-#     newdata = Dict()
-#     for (key1, val1) in pdata
-#         for (key2, val2) in val1
-#             for (key3, val3) in val2
-#                 newdata[(key1, key2, key3)] = deepcopy(val3)
-#             end
-#         end
-#     end
-
-#     max_size = maximum(size.(values(newdata),1))
-#     for (key,val) in pairs(newdata)
-#         if key != "infections"
-#             newdata[key] = _pad_matrix(val,max_size)
-#         end
-#     end
-
-#     # write newdata to a file 
-#     # Write newdata dictionary to a JSON file
-#     output_file = joinpath(figure_path, "$(base_graph)-aggregated_data.json")
-#     open(output_file, "w") do file
-#         JSON3.write(file, newdata)
-#     end
-# end
-
-
-base_graph_names = [
-    "spatial-hypergraph-5000-2",
-    "spatial-hypergraph-5000-5",
-    # larger 
-    "spatial-hypergraph-50000-2",
-    "spatial-hypergraph-50000-5"
+data_paths = [
+    "data/hysteresis/sirs/scratch-v1/"
+    "data/hysteresis/sirs/"
+    "data/hysteresis/sirs/scratch-v2/"
+    "data/hysteresis/sirs/scratch-v3/"
 ]
-RAW_DATA = Dict()
-for base_graph in base_graph_names
-    graph_names = map(x->"$(splitext(basename(x))[1]).jsonl",get_fnames(base_graph))
-    filter!(x->occursin("newalpha.jsonl",x),graph_names)
+for data_path in data_paths
+    # LOAD + AGGREGATE DATA
+    RAW_DATA = Dict()
+    for base_graph in base_graph_names 
+        graph_names = map(x->"$(splitext(basename(x))[1]).jsonl",get_fnames(base_graph))
+        filter!(x->occursin("newalpha.jsonl",x),graph_names)
 
-    println("ALL GRAPHS..")
-    for x in graph_names
-        println(x)
+        println("ALL GRAPHS..")
+        for x in graph_names
+            println(x)
+        end
+        for fname in graph_names 
+            RAW_DATA[fname] = load_epidemic_data_reduce(data_path,fname,x->dictionary_trailing_average(x,1000),truncate=false)
+        end
+    end 
+    # SAVE DATA 
+    last_dir = split(data_path,"/")[end-1]
+    fpath = ""
+    if last_dir=="sirs"
+        fpath = joinpath(save_path,"aggregated-sirs-output.json")
+    else
+        fpath = joinpath(save_path,"aggregated-sirs-output-$last_dir.json")
     end
-    for fname in graph_names #smaller graph 
-        # RAW_DATA[fname] = load_epidemic_data_reduce("data/hysteresis/sirs/scratch-v2/",fname,x->dictionary_trailing_average(x,1000),truncate=true,ntruncate=1000)
-        RAW_DATA[fname] = load_epidemic_data_reduce("data/hysteresis/sirs/scratch-v3/",fname,x->dictionary_trailing_average(x,1000),truncate=false)
-    end
-end 
-
-# quick and dirty data 
-# varinfo()
-
-open("aggregated-sirs-output-scratch-v3.json","w") do io
-    JSON3.write(io, RAW_DATA)
-end 
-
-
-# overwrite new graphs 
-# new_graphs = [
-#     "spatial-hypergraph-5000-2",
-#     "spatial-hypergraph-5000-5",
-# ]
-# for base_graph in new_graphs
-#     graph_names = map(x->"$(splitext(basename(x))[1]).jsonl",get_fnames(base_graph))
-#     filter!(x->occursin("newalpha.jsonl",x),graph_names)
-
-#     println("ALL GRAPHS..")
-#     for x in graph_names
-#         println(x)
-#     end
-#     for fname in graph_names 
-#         RAW_DATA[fname] = load_epidemic_data_reduce("data/hysteresis/sirs/",fname,x->dictionary_trailing_average(x,1000),truncate=true,ntruncate=1000)
-#     end
-# end 
-
-# open("aggregated-sirs-output-v2.json","w") do io
-#     write(io, RAW_DATA)
-# end 
+    open(fpath,"w") do io
+        JSON3.write(io, RAW_DATA)
+    end     
+end
