@@ -3,4 +3,7 @@ data/hysteresis/*
 planning/*
 data/*
 scratch/*
-code/ppr/LHQD/*
+code/ppr/LHQD*
+backup/*
+aggregated_data/*
+weighted_cc_example.smat
