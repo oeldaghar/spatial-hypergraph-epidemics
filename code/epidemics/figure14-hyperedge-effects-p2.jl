@@ -1,7 +1,7 @@
 # for standalone running. loads in aggregated_data dictionaries  
 # include("epidemic-figures-utils.jl")
 
-# aggregated_data2 = load_aggregated_data("aggregated_data","aggregated-sirs-output-scratch-v2.json")
+# aggregated_data2 = load_aggregated_data("data/epidemics/sirs/","aggregated-sirs-output-scratch-v2.json")
 
 b = 1e-1
 g = 5e-2 

@@ -44,7 +44,7 @@ function plot_subfig(subfig, rad)
     annotate!(plt, xy[1,8]+0.01, xy[2,8]+0.07, Plots.text(8, 11))
     annotate!(plt, xy[1,9]-0.06, xy[2,9]-0.02, Plots.text(9, 11))
 
-    clusters = dbscan(pts, rad)
+    clusters = dbscan(pts, rad).clusters
     edges = Vector{Int}[]
     for c in clusters
         e = [i]

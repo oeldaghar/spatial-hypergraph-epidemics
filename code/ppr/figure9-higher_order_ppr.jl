@@ -91,9 +91,9 @@ minval = minimum(x-> !isinf(x) ? x : 1,log10.(ppr_soln))
 Plots.plot!(f,
             xlims=(minval-1e-1,0),
             ylims=(minval-1e-1,0),
-            xlabel = "Pairwise PPR Solution",
-            ylabel = "Hypergraph PPR Solutions",
-            title="PPR Solutions",
+            xlabel = "Pairwise Solution Components",
+            ylabel = "Hypergraph Solution Components",
+            title="Seeded PageRank\nSolution Components",
 )
 # manually update ticks 
 new_xticks = xticks(f)[1]

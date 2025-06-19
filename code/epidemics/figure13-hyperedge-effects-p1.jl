@@ -1,6 +1,6 @@
 # for standalone running. loads in aggregated_data dictionaries  
 # include("epidemic-figures-utils.jl")
-# aggregated_data3 = load_aggregated_data("aggregated_data","aggregated-sirs-output-scratch-v3.json")
+# aggregated_data3 = load_aggregated_data("data/epidemics/sirs/","aggregated-sirs-output-scratch-v3.json")
 
 function new_infections_data(agg_data::Dict,
                                 gname_key::String,
@@ -50,7 +50,7 @@ for (ind,b) in enumerate([1e-2,3e-2,1e-1,9e-1])
         legend = false,
         size = (400, 300))
     display(f)
-    Plots.savefig(f,"data/output/figures/final/hyperedge-effects-p1-$ind.pdf")
+    # Plots.savefig(f,"data/output/figures/final/hyperedge-effects-p1-$ind.pdf")
     push!(figs,f)
 end 
 

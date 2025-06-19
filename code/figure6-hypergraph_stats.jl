@@ -1,7 +1,7 @@
 # Plotting 
 using Plots, LaTeXStrings, Colors
 using Measures
-
+# using StatsBase
 using JSON 
 
 # load in the data 
@@ -29,7 +29,6 @@ row3 = reconstruct_row(n, 10)
 
 # Combine rows into data
 data = [row1, row2, row3]
-
 
 function _custom_heatmap(pdata)
     # function to bin rows of the heatmap weight matrix
@@ -91,10 +90,12 @@ function make_fig(data)
                 yscale=:log10,
                 color=:viridis,
                 # clims=(-6.0,0),
+                colorbar_ticks=([-1,0,1,2,3,4], [L"10^{-1}",L"10^{0}",L"10^{1}",L"10^{2}",L"10^{3}",L"10^{4}"]),
                 framestyle=:box,
                 thickness_scaling=1.2,
                 guidefontsize=14,
-                tickfontsize=12)
+                tickfontsize=12,
+                right_margin=-1*Plots.mm)
         push!(col1_figs,f)
     end
 
@@ -155,19 +156,40 @@ function make_fig(data)
         push!(figs,tup[2])
         push!(figs,tup[3])
     end
+    
+    frows = []
+    for i = 1:3
+        lrow = @layout Plots.grid(1, 3, widths=[0.4, 0.3, 0.3])
+        f = Plots.plot(figs[3*(i-1)+1:3*i]...,
+                    layout=lrow,
+                    margin=0*Plots.mm,
+                size = (1200,400))
+        push!(frows,f)
+    end
 
-    l = @layout [Plots.grid(3, 3, widths=[0.42, 0.29, 0.29])]
-    plt = Plots.plot(figs...,layout=l, 
-                margin=0*Plots.mm, size=(1200,1100))
-    Plots.plot!(plt,top_margin = 10mm,bottom_margin=-2mm)
-    Plots.plot!(plt[2],title="n=$n  d=2",titlefontsize = 20,
-                    top_margin=-3Measures.mm)
-    Plots.plot!(plt[5],title="n=$n  d=5",titlefontsize = 20,
-                    top_margin=-3Measures.mm)
-    Plots.plot!(plt[8],title="n=$n  d=10",titlefontsize = 20,
-                    top_margin=-3Measures.mm)
-    return plt
+    Plots.plot!(frows[1],plot_title="n=$n  d=2",titlefontsize = 20,
+                    top_margin=2*Measures.mm)
+    Plots.plot!(frows[2],plot_title="n=$n  d=5",titlefontsize = 20,
+                    top_margin=2*Measures.mm)
+    Plots.plot!(frows[3],plot_title="n=$n  d=10",titlefontsize = 20,
+                    top_margin=2*Measures.mm)
+
+    l = @layout Plots.grid(3, 1, heights = [1/3 for i=1:3])
+    newf = Plots.plot(frows...,layout=l,size=(1200,1200),
+            top_margin=2*Plots.mm,
+            bottom_margin=2*Plots.mm,
+            left_margin=1*Plots.mm,
+            right_margin=2*Plots.mm,
+            plot_title= "n=$n d=2",
+            titlefontsize=16)
+
+    newf.subplots[1].attr[:right_margin] =-12*Plots.mm
+    newf.subplots[9].attr[:right_margin] =-12*Plots.mm
+    newf.subplots[5].attr[:right_margin] =-12*Plots.mm
+    return newf
 end
 
+pyplot()
 plt = make_fig(data)
 Plots.savefig(plt,"data/output/figures/final/hypergraph-stats.pdf")
+gr()

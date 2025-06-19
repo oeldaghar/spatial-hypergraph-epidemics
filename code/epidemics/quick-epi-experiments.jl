@@ -96,7 +96,6 @@ for gname in gnames
     parallel_time = 0
     # MAIN LOOP
     for (i,fname) in enumerate(fnames)
-        other_start_time = time()
         println("WORKING ON GRAPH $i OF $(length(fnames))")
         hedges = read_hedges(fname)
 

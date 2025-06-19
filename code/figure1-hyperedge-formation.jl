@@ -82,7 +82,7 @@ plt1
 ###FIGURE 2 - cluster neighbors
 plt2 = deepcopy(plt1)
 #cluster neighbors 
-clusters = dbscan(pts, rad)
+clusters = dbscan(pts, rad).clusters
 edges = Vector{Int}[]
 for c in clusters
     e = [i]

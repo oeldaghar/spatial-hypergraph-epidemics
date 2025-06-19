@@ -14,9 +14,9 @@ function total_infections_heatmap(agg_data,gname_key="-50000-2-")
     b_vals = unique(agg_data[graph_names[1]]["beta"])
     
     # build data for plot
-    linear_data = zeros(Float64,length(b_vals),length(alpha_vals))
-    pairwise_data = zeros(Float64,length(b_vals),length(alpha_vals))
-    sqrt_data = zeros(Float64,length(b_vals),length(alpha_vals))
+    linear_data = zeros(Float64,length(b_vals),length(ALPHA_VALS))
+    pairwise_data = zeros(Float64,length(b_vals),length(ALPHA_VALS))
+    sqrt_data = zeros(Float64,length(b_vals),length(ALPHA_VALS))
     
     for (col,gname) in enumerate(graph_names) # loop over alpha
         data = agg_data[gname]
@@ -41,7 +41,7 @@ linear_data, sqrt_data, pairwise_data = total_infections_heatmap(aggregated_data
 @show extrema(log10.(pairwise_data))
 
 # first figure.. heatmaps 
-f1 = Plots.heatmap(alpha_vals,beta_vals,log10.(linear_data),yscale=:log10, clims=(0.5,4.4))
+f1 = Plots.heatmap(ALPHA_VALS,BETA_VALS,log10.(linear_data),yscale=:log10, clims=(0.5,4.4))
 Plots.plot!(f1,xlabel = L"\alpha", ylabel = L"\beta",title="Total Infections g(m)=m",
             framestyle=:box,
             thickness_scaling=1.2,

@@ -153,3 +153,79 @@ Plots.plot!(f,
                 thickness_scaling=1.2)
 
 # Plots.savefig(f,"data/output/figures/final/transmissions-2e-3.pdf")
+
+# heatmap for projected edge volume 
+# x-axis = alpha 
+# y-axis = total projected edge volume of hyperedge of a given size 
+
+# get all graphs with the same name 
+gname = "spatial-hypergraph-50000-2"
+fnames = filter!(x->endswith(x,".txt"), get_fnames(gname))
+fnames = filter(x->occursin("newalpha",x),fnames)
+
+projected_edge_vols = Dict{Float64,Dict{Int,Float64}}()
+parsed_alphas = map(x->parse(Float64,x[5]),split.(fnames,"-"))
+p = sortperm(parsed_alphas)
+parsed_alphas = parsed_alphas[p]
+fnames = fnames[p]
+
+for (alpha_val,gname) in zip(parsed_alphas,fnames)
+    # initialize dice 
+    projected_edge_vols[alpha_val] = Dict{Int,Float64}()
+    hedges = read_hedges(gname)
+    # loop over edges and project down 
+    for edge in hedges 
+        edge_size = lastindex(edge)
+        proj_edge_vol = edge_size*(edge_size-1)/2
+        if haskey(projected_edge_vols[alpha_val],edge_size)
+            projected_edge_vols[alpha_val][edge_size] += proj_edge_vol
+        else
+            projected_edge_vols[alpha_val][edge_size] = proj_edge_vol
+        end
+    end
+end
+
+
+# make into a matrix for plotting 
+max_hsize = maximum([maximum(collect(keys(projected_edge_vols[alph]))) for alph in parsed_alphas])
+new_pdata = zeros(max_hsize,lastindex(parsed_alphas))
+for (alph_ind,alph) in enumerate(parsed_alphas)
+    for (edge_size, proj_vol) in pairs(projected_edge_vols[alph])
+        new_pdata[edge_size,alph_ind] = proj_vol
+    end
+end
+
+new_pdata = mapslices(x->x./sum(x), new_pdata,dims=1)
+
+f = _custom_heatmap(new_pdata,ALPHA_VALS,false)
+Plots.plot!(f,xlabel=L"\alpha",ylabel="Hyperedge Size",title="Projected Edge Volume")
+# Plots.savefig(f,"data/output/figures/final/projected-edge-volume-fig17-supp.pdf")
+
+
+# start here.. save these as separte figures 
+f = _custom_heatmap(pdata,ALPHA_VALS,true)
+Plots.plot!(f,
+                xlabel=L"\alpha",
+                ylabel="Hyperedge Size",
+                title="Normalized Transmissions\nβ=$beta, g(m)=1",
+                right_margin=3Plots.mm,
+                top_margin=3Plots.mm,
+                bottom_margin=-1Plots.mm,
+                thickness_scaling=1.2,
+                clims=(-3,0)
+)
+Plots.savefig(f,"data/output/figures/final/transmissions-2e-3.pdf")
+# Plots.savefig(f,"data/output/figures/final/normalized-transmission-fig17-part1.pdf")
+
+f = _custom_heatmap(new_pdata,ALPHA_VALS,true)
+Plots.plot!(f,
+                xlabel=L"\alpha",
+                ylabel="Hyperedge Size",
+                title="Projected Edge Volume",
+                right_margin=3Plots.mm,
+                top_margin=3Plots.mm,
+                bottom_margin=-1Plots.mm,
+                thickness_scaling=1.2,
+                clims=(-3,0)
+)
+Plots.savefig(f,"data/output/figures/final/projected-edge-volume-fig17-part2.pdf")

@@ -111,7 +111,7 @@ end
 load_aggregated_data(fname) = load_aggregated_data("",fname)
 
 # load in aggregated data.. takes about 5mins
-aggregated_data = load_aggregated_data("aggregated_data","aggregated-sirs-output.json")
-aggregated_data1 = load_aggregated_data("aggregated_data","aggregated-sirs-output-scratch-v1.json")
-aggregated_data2 = load_aggregated_data("aggregated_data","aggregated-sirs-output-scratch-v2.json")
-aggregated_data3 = load_aggregated_data("aggregated_data","aggregated-sirs-output-scratch-v3.json")
+aggregated_data = load_aggregated_data("data/epidemics/sirs/","aggregated-sirs-output.json")
+aggregated_data1 = load_aggregated_data("data/epidemics/sirs/","aggregated-sirs-output-scratch-v1.json")
+aggregated_data2 = load_aggregated_data("data/epidemics/sirs/","aggregated-sirs-output-scratch-v2.json")
+aggregated_data3 = load_aggregated_data("data/epidemics/sirs/","aggregated-sirs-output-scratch-v3.json")

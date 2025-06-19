@@ -72,4 +72,28 @@ Plots.plot!(plt,bottom_margin=2mm)
 Plots.plot!(plt[1],left_margin=8mm)
 Plots.plot!(plt,top_margin=5mm,dpi = 1000)
 
+Plots.savefig(plt,"data/output/figures/final/alpha-figure-supp.pdf")
+
+# new figure 5.. moving the above to the appendix 
+plt = Plots.plot(figs[[1,4,7]]...,layout = (1,3),
+                    size=(1500,450),
+                    top_margin=8Measures.mm,
+                    bottom_margin=5Measures.mm,
+                    link=:all)
+_remove_tick_labels(plt[2])
+_remove_tick_labels(plt[3])
+# touch up margins and label 
+Plots.plot!(plt[1],title = "n=$n, d=2",
+        titlefontsize=18)
+Plots.plot!(plt[2],title = "n=$n, d=5",
+        titlefontsize=18)
+Plots.plot!(plt[3],title = "n=$n, d=10",
+        titlefontsize=18)
+Plots.plot!(plt,bottom_margin=6mm)
+Plots.plot!(plt[1],left_margin=8mm)
+Plots.plot!(plt,top_margin=5mm,thickness_scaling=1.4)
+# Plots.plot!(plt[1],yscale=:identity)
+# Plots.plot!(plt[2],yscale=:identity)
+# Plots.plot!(plt[3],yscale=:identity)
+
 Plots.savefig(plt,"data/output/figures/final/alpha-figure.pdf")
