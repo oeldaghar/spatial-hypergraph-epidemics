@@ -7,3 +7,4 @@ code/ppr/LHQD*
 backup/*
 aggregated_data/*
 weighted_cc_example.smat
+.vscode/
